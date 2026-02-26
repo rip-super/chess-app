@@ -1065,12 +1065,19 @@ impl Position {
         }
 
         let color_idx = self.side_to_move as usize;
-        let piece_idx = match mv.flag {
-            MoveFlag::Promotion | MoveFlag::PromotionCapture => mv.promotion.unwrap() as usize,
-            _ => self.piece_on(mv.from).unwrap().1 as usize,
-        };
-        self.bitboards.pieces[color_idx][piece_idx] |= 1u64 << mv.to;
-        self.bitboards.pieces[color_idx][piece_idx] &= !(1u64 << mv.from);
+        let piece_idx = self.piece_on(mv.from).unwrap().1 as usize;
+
+        match mv.flag {
+            MoveFlag::Promotion | MoveFlag::PromotionCapture => {
+                let promo_idx = mv.promotion.unwrap() as usize;
+                self.bitboards.pieces[color_idx][promo_idx] |= 1u64 << mv.to;
+                self.bitboards.pieces[color_idx][Piece::Pawn as usize] &= !(1u64 << mv.from);
+            }
+            _ => {
+                self.bitboards.pieces[color_idx][piece_idx] |= 1u64 << mv.to;
+                self.bitboards.pieces[color_idx][piece_idx] &= !(1u64 << mv.from);
+            }
+        }
 
         if let Some(captured) = undo.captured {
             let captured_color = 1 - color_idx;
@@ -1155,12 +1162,18 @@ impl Position {
 
         let color_idx = self.side_to_move as usize;
 
-        let piece_idx = match mv.flag {
-            MoveFlag::Promotion | MoveFlag::PromotionCapture => mv.promotion.unwrap() as usize,
-            _ => self.piece_on(mv.to).unwrap().1 as usize,
-        };
-        self.bitboards.pieces[color_idx][piece_idx] |= 1u64 << mv.from;
-        self.bitboards.pieces[color_idx][piece_idx] &= !(1u64 << mv.to);
+        match mv.flag {
+            MoveFlag::Promotion | MoveFlag::PromotionCapture => {
+                let promo_idx = mv.promotion.unwrap() as usize;
+                self.bitboards.pieces[color_idx][Piece::Pawn as usize] |= 1u64 << mv.from;
+                self.bitboards.pieces[color_idx][promo_idx] &= !(1u64 << mv.to);
+            }
+            _ => {
+                let piece_idx = self.piece_on(mv.to).unwrap().1 as usize;
+                self.bitboards.pieces[color_idx][piece_idx] |= 1u64 << mv.from;
+                self.bitboards.pieces[color_idx][piece_idx] &= !(1u64 << mv.to);
+            }
+        }
 
         if let Some(captured) = undo.captured {
             let captured_color = 1 - color_idx;

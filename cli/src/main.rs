@@ -67,28 +67,20 @@ pub fn print_position(pos: &Position) {
 }
 
 fn main() {
-    let mut pos = Position::new();
+    let mut pos = Position::from_fen("8/4P3/8/8/8/8/8/4kK3 w - - 0 1");
+    print_position(&pos);
+
+    let mv = Move {
+        from: Square::E7 as u8,
+        to: Square::E8 as u8,
+        promotion: Some(Piece::Queen),
+        flag: MoveFlag::Promotion,
+    };
+
+    let undo = pos.make_move(mv);
 
     print_position(&pos);
 
-    let undo = pos.make_move(Move {
-        from: Square::E2 as u8,
-        to: Square::E4 as u8,
-        promotion: None,
-        flag: MoveFlag::DoublePawnPush,
-    });
-
-    print_position(&pos);
-
-    pos.undo_move(
-        Move {
-            from: Square::E2 as u8,
-            to: Square::E4 as u8,
-            promotion: None,
-            flag: MoveFlag::DoublePawnPush,
-        },
-        undo,
-    );
-
+    pos.undo_move(mv, undo);
     print_position(&pos);
 }
