@@ -1,5 +1,7 @@
 #![allow(unused)]
 
+// region: Macros
+
 macro_rules! add_attack {
     ($attacks:ident, $shifted:expr, $mask:expr) => {
         if $shifted & $mask != 0 {
@@ -7,6 +9,10 @@ macro_rules! add_attack {
         }
     };
 }
+
+// endregion
+
+// region: Constants
 
 const NOT_A_FILE: u64 = 0xFEFEFEFEFEFEFEFE;
 const NOT_H_FILE: u64 = 0x7F7F7F7F7F7F7F7F;
@@ -246,15 +252,218 @@ impl Square {
     pub const H1: usize = 63;
 }
 
+// endregion
+
+// region: Bit Helpers
+
 pub fn get_bit(board: u64, square: usize) -> usize {
     ((board >> square) & 1) as usize
 }
+
 pub fn set_bit(board: &mut u64, square: usize) {
     *board |= 1 << square
 }
+
 pub fn pop_bit(board: &mut u64, square: usize) {
     *board &= !(1 << square)
 }
+
+// endregion
+
+// region: Enums
+
+pub enum Piece {
+    Pawn,
+    Knight,
+    Bishop,
+    Rook,
+    Queen,
+    King,
+}
+
+enum SlidingPiece {
+    Bishop,
+    Rook,
+}
+
+// endregion
+
+// region: Rng
+
+struct Rng {
+    state: u32,
+}
+
+impl Rng {
+    fn new(seed: u32) -> Rng {
+        Rng { state: seed }
+    }
+
+    fn next_u32(&mut self) -> u32 {
+        self.state ^= self.state << 13;
+        self.state ^= self.state >> 17;
+        self.state ^= self.state << 5;
+
+        self.state
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        let n1 = (self.next_u32() as u64) & 0xFFFF;
+        let n2 = (self.next_u32() as u64) & 0xFFFF;
+        let n3 = (self.next_u32() as u64) & 0xFFFF;
+        let n4 = (self.next_u32() as u64) & 0xFFFF;
+
+        n1 | (n2 << 16) | (n3 << 32) | (n4 << 48)
+    }
+
+    fn generate_magic_number(&mut self) -> u64 {
+        self.next_u64() & self.next_u64() & self.next_u64()
+    }
+}
+
+// endregion
+
+// region: Magics
+
+fn find_magic_number(
+    square: usize,
+    relevant_bits: u32,
+    sliding_piece: SlidingPiece,
+    rng: &mut Rng,
+) -> u64 {
+    let mut occupancies = [0u64; 4096];
+    let mut attacks = [0u64; 4096];
+    let mut used_attacks = [0u64; 4096];
+
+    let attack_mask = match sliding_piece {
+        SlidingPiece::Bishop => AttackTables::mask_bishop_attacks(square),
+        SlidingPiece::Rook => AttackTables::mask_rook_attacks(square),
+    };
+
+    let occupancy_indices = 1 << relevant_bits;
+
+    for index in 0..occupancy_indices {
+        occupancies[index] = AttackTables::set_occupancy(index as u32, relevant_bits, attack_mask);
+        attacks[index] = match sliding_piece {
+            SlidingPiece::Bishop => AttackTables::bishop_attacks_fly(square, occupancies[index]),
+            SlidingPiece::Rook => AttackTables::rook_attacks_fly(square, occupancies[index]),
+        };
+    }
+
+    for _ in 0..100_000_000 {
+        let magic_number = rng.generate_magic_number();
+
+        if ((attack_mask.wrapping_mul(magic_number)) & 0xFF00000000000000).count_ones() < 6 {
+            continue;
+        }
+
+        used_attacks.fill(0);
+
+        let mut fail = false;
+
+        for index in 0..occupancy_indices {
+            let magic_index =
+                ((occupancies[index].wrapping_mul(magic_number)) >> (64 - relevant_bits)) as usize;
+
+            if used_attacks[magic_index] == 0 {
+                used_attacks[magic_index] = attacks[index];
+            } else if used_attacks[magic_index] != attacks[index] {
+                fail = true;
+                break;
+            }
+        }
+
+        if !fail {
+            return magic_number;
+        }
+    }
+
+    println!("Magic number search failed. No magic number found.");
+
+    0
+}
+
+fn create_magic_numbers(seed: u32) {
+    let mut rng = Rng::new(seed);
+
+    for (square, relevant_bits) in ROOK_RELEVANT_BITS.into_iter().enumerate() {
+        let magic = find_magic_number(square, relevant_bits, SlidingPiece::Rook, &mut rng);
+        println!("{:#x},", magic);
+    }
+
+    println!("\n");
+
+    for (square, relevant_bits) in BISHOP_RELEVANT_BITS.into_iter().enumerate() {
+        let magic = find_magic_number(square, relevant_bits, SlidingPiece::Bishop, &mut rng);
+        println!("{:#x},", magic);
+    }
+}
+
+// endregion
+
+// region: Bitboards
+
+#[derive(Clone, Copy, Default)]
+pub struct Bitboards {
+    wp: u64,
+    wn: u64,
+    wb: u64,
+    wr: u64,
+    wq: u64,
+    wk: u64,
+    bp: u64,
+    bn: u64,
+    bb: u64,
+    br: u64,
+    bq: u64,
+    bk: u64,
+}
+
+impl Bitboards {
+    pub fn new() -> Bitboards {
+        Bitboards {
+            wp: 0x000000000000FF00,
+            wn: 0x0000000000000042,
+            wb: 0x0000000000000024,
+            wr: 0x0000000000000081,
+            wq: 0x0000000000000008,
+            wk: 0x0000000000000010,
+            bp: 0x00FF000000000000,
+            bn: 0x4200000000000000,
+            bb: 0x2400000000000000,
+            br: 0x8100000000000000,
+            bq: 0x0800000000000000,
+            bk: 0x1000000000000000,
+        }
+    }
+
+    fn white(&self) -> u64 {
+        self.wp | self.wn | self.wb | self.wr | self.wq | self.wk
+    }
+
+    fn black(&self) -> u64 {
+        self.bp | self.bn | self.bb | self.br | self.bq | self.bk
+    }
+
+    fn all(&self) -> u64 {
+        self.wp
+            | self.wn
+            | self.wb
+            | self.wr
+            | self.wq
+            | self.wk
+            | self.bp
+            | self.bn
+            | self.bb
+            | self.br
+            | self.bq
+            | self.bk
+    }
+}
+
+// endregion
+
+// region: Attack Tables
 
 pub struct SlidingTable {
     mask: [u64; 64],
@@ -566,3 +775,5 @@ impl AttackTables {
         self.rook_table.data[self.rook_table.offset[square] + index]
     }
 }
+
+// endregion
