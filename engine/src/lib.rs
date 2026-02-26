@@ -759,6 +759,12 @@ impl Bitboards {
         }
     }
 
+    pub fn empty() -> Bitboards {
+        Bitboards {
+            pieces: [[0u64; 6]; 2],
+        }
+    }
+
     fn white(&self) -> u64 {
         self.pieces[Color::White as usize]
             .iter()
@@ -847,7 +853,7 @@ impl Position {
         let en_passant_str = parts[3];
         let halfmove_clock: u32 = parts[4].parse().unwrap_or(0);
 
-        let mut bitboards = Bitboards::new();
+        let mut bitboards = Bitboards::empty();
 
         for (rank_idx, row) in piece_placement.split("/").enumerate() {
             let mut file = 0;
@@ -1141,7 +1147,64 @@ impl Position {
         undo
     }
 
-    // pub fn undo_move(&mut self, mv: Move, undo: Undo) {}
+    pub fn undo_move(&mut self, mv: Move, undo: Undo) {
+        self.side_to_move = match self.side_to_move {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        };
+
+        let color_idx = self.side_to_move as usize;
+
+        let piece_idx = match mv.flag {
+            MoveFlag::Promotion | MoveFlag::PromotionCapture => mv.promotion.unwrap() as usize,
+            _ => self.piece_on(mv.to).unwrap().1 as usize,
+        };
+        self.bitboards.pieces[color_idx][piece_idx] |= 1u64 << mv.from;
+        self.bitboards.pieces[color_idx][piece_idx] &= !(1u64 << mv.to);
+
+        if let Some(captured) = undo.captured {
+            let captured_color = 1 - color_idx;
+            self.bitboards.pieces[captured_color][captured as usize] |= 1u64 << mv.to;
+        }
+
+        if mv.flag == MoveFlag::EnPassant {
+            let cap_sq = if self.side_to_move == Color::White {
+                mv.to - 8
+            } else {
+                mv.to + 8
+            };
+            let captured_color = 1 - color_idx;
+            self.bitboards.pieces[captured_color][Piece::Pawn as usize] |= 1u64 << cap_sq;
+        }
+
+        match mv.flag {
+            MoveFlag::KingCastle => {
+                let (rook_from, rook_to) = if self.side_to_move == Color::White {
+                    (7, 5)
+                } else {
+                    (63, 61)
+                };
+                let rook_idx = Piece::Rook as usize;
+                self.bitboards.pieces[color_idx][rook_idx] |= 1u64 << rook_from;
+                self.bitboards.pieces[color_idx][rook_idx] &= !(1u64 << rook_to);
+            }
+            MoveFlag::QueenCastle => {
+                let (rook_from, rook_to) = if self.side_to_move == Color::White {
+                    (0, 3)
+                } else {
+                    (56, 59)
+                };
+                let rook_idx = Piece::Rook as usize;
+                self.bitboards.pieces[color_idx][rook_idx] |= 1u64 << rook_from;
+                self.bitboards.pieces[color_idx][rook_idx] &= !(1u64 << rook_to);
+            }
+            _ => {}
+        }
+
+        self.castling_rights = undo.castling_rights;
+        self.en_passant = undo.en_passant;
+        self.halfmove_clock = undo.halfmove_clock;
+    }
 
     // pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {}
 
