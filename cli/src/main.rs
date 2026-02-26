@@ -1,33 +1,86 @@
 use engine::*;
 
-fn print_bitboard(board: u64) {
-    println!();
-
-    for rank in 0..8 {
+pub fn print_position(pos: &Position) {
+    println!("  +------------------------+");
+    for rank in (0..8).rev() {
+        print!("{} |", rank + 1);
         for file in 0..8 {
-            let square = rank * 8 + file;
-
-            if file == 0 {
-                print!(" {}  ", 8 - rank);
-            }
-
-            print!(" {}", get_bit(board, square));
+            let sq = rank * 8 + file;
+            let ch = if let Some((color, piece)) = pos.piece_on(sq) {
+                match (color, piece) {
+                    (Color::White, Piece::Pawn) => 'P',
+                    (Color::White, Piece::Knight) => 'N',
+                    (Color::White, Piece::Bishop) => 'B',
+                    (Color::White, Piece::Rook) => 'R',
+                    (Color::White, Piece::Queen) => 'Q',
+                    (Color::White, Piece::King) => 'K',
+                    (Color::Black, Piece::Pawn) => 'p',
+                    (Color::Black, Piece::Knight) => 'n',
+                    (Color::Black, Piece::Bishop) => 'b',
+                    (Color::Black, Piece::Rook) => 'r',
+                    (Color::Black, Piece::Queen) => 'q',
+                    (Color::Black, Piece::King) => 'k',
+                }
+            } else {
+                '.'
+            };
+            print!(" {} ", ch);
         }
+        println!("|");
+    }
+    println!("  +------------------------+");
+    println!("   a  b  c  d  e  f  g  h");
+    println!("Side to move: {:?}", pos.side_to_move);
+    println!(
+        "Castling: {}{}{}{}",
+        if pos.castling_rights & 1 != 0 {
+            'K'
+        } else {
+            '-'
+        },
+        if pos.castling_rights & 2 != 0 {
+            'Q'
+        } else {
+            '-'
+        },
+        if pos.castling_rights & 4 != 0 {
+            'k'
+        } else {
+            '-'
+        },
+        if pos.castling_rights & 8 != 0 {
+            'q'
+        } else {
+            '-'
+        }
+    );
 
-        println!();
+    if let Some(ep) = pos.en_passant {
+        let file = (ep % 8) + b'a';
+        let rank = (ep / 8) + b'1';
+        println!("En passant: {}{}", file as char, rank as char);
+    } else {
+        println!("En passant: -");
     }
 
-    print!("\n     a b c d e f g h\n\n");
-
-    println!("     Bitboard: {board}");
-
-    println!();
+    println!("Halfmove clock: {}", pos.halfmove_clock);
 }
 
 fn main() {
-    let mut occupancy = 0;
-    set_bit(&mut occupancy, Square::E4);
-    set_bit(&mut occupancy, Square::F7);
-    let attacks = AttackTables::new();
-    print_bitboard(attacks.get_bishop_attacks(Square::D5, occupancy));
+    let mut pos = Position::new();
+    print_position(&pos);
+    pos.make_move(Move {
+        from: Square::E2 as u8,
+        to: Square::E4 as u8,
+        promotion: None,
+        flag: MoveFlag::DoublePawnPush,
+    });
+    print_position(&pos);
+    pos.make_move(Move {
+        from: Square::E7 as u8,
+        to: Square::E5 as u8,
+        promotion: None,
+        flag: MoveFlag::DoublePawnPush,
+    });
+    print_position(&pos);
 }
