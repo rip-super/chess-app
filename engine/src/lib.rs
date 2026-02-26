@@ -13,6 +13,164 @@ const NOT_H_FILE: u64 = 0x7F7F7F7F7F7F7F7F;
 const NOT_HG_FILE: u64 = 0x3F3F3F3F3F3F3F3F;
 const NOT_AB_FILE: u64 = 0xFCFCFCFCFCFCFCFC;
 
+#[rustfmt::skip]
+const BISHOP_RELEVANT_BITS: [u32; 64] = [
+    6, 5, 5, 5, 5, 5, 5, 6, 
+    5, 5, 5, 5, 5, 5, 5, 5, 
+    5, 5, 7, 7, 7, 7, 5, 5, 
+    5, 5, 7, 9, 9, 7, 5, 5,
+    5, 5, 7, 9, 9, 7, 5, 5, 
+    5, 5, 7, 7, 7, 7, 5, 5, 
+    5, 5, 5, 5, 5, 5, 5, 5, 
+    6, 5, 5, 5, 5, 5, 5, 6,
+];
+
+#[rustfmt::skip]
+const ROOK_RELEVANT_BITS: [u32; 64] = [
+    12, 11, 11, 11, 11, 11, 11, 12, 
+    11, 10, 10, 10, 10, 10, 10, 11, 
+    11, 10, 10, 10, 10, 10, 10, 11, 
+    11, 10, 10, 10, 10, 10, 10, 11, 
+    11, 10, 10, 10, 10, 10, 10, 11, 
+    11, 10, 10, 10, 10, 10, 10, 11, 
+    11, 10, 10, 10, 10, 10, 10, 11, 
+    12, 11, 11, 11, 11, 11, 11, 12,
+];
+
+const ROOK_MAGIC_NUMBERS: [u64; 64] = [
+    0x8a80104000800020,
+    0x140002000100040,
+    0x2801880a0017001,
+    0x100081001000420,
+    0x200020010080420,
+    0x3001c0002010008,
+    0x8480008002000100,
+    0x2080088004402900,
+    0x800098204000,
+    0x2024401000200040,
+    0x100802000801000,
+    0x120800800801000,
+    0x208808088000400,
+    0x2802200800400,
+    0x2200800100020080,
+    0x801000060821100,
+    0x80044006422000,
+    0x100808020004000,
+    0x12108a0010204200,
+    0x140848010000802,
+    0x481828014002800,
+    0x8094004002004100,
+    0x4010040010010802,
+    0x20008806104,
+    0x100400080208000,
+    0x2040002120081000,
+    0x21200680100081,
+    0x20100080080080,
+    0x2000a00200410,
+    0x20080800400,
+    0x80088400100102,
+    0x80004600042881,
+    0x4040008040800020,
+    0x440003000200801,
+    0x4200011004500,
+    0x188020010100100,
+    0x14800401802800,
+    0x2080040080800200,
+    0x124080204001001,
+    0x200046502000484,
+    0x480400080088020,
+    0x1000422010034000,
+    0x30200100110040,
+    0x100021010009,
+    0x2002080100110004,
+    0x202008004008002,
+    0x20020004010100,
+    0x2048440040820001,
+    0x101002200408200,
+    0x40802000401080,
+    0x4008142004410100,
+    0x2060820c0120200,
+    0x1001004080100,
+    0x20c020080040080,
+    0x2935610830022400,
+    0x44440041009200,
+    0x280001040802101,
+    0x2100190040002085,
+    0x80c0084100102001,
+    0x4024081001000421,
+    0x20030a0244872,
+    0x12001008414402,
+    0x2006104900a0804,
+    0x1004081002402,
+];
+
+const BISHOP_MAGIC_NUMBERS: [u64; 64] = [
+    0x40040844404084,
+    0x2004208a004208,
+    0x10190041080202,
+    0x108060845042010,
+    0x581104180800210,
+    0x2112080446200010,
+    0x1080820820060210,
+    0x3c0808410220200,
+    0x4050404440404,
+    0x21001420088,
+    0x24d0080801082102,
+    0x1020a0a020400,
+    0x40308200402,
+    0x4011002100800,
+    0x401484104104005,
+    0x801010402020200,
+    0x400210c3880100,
+    0x404022024108200,
+    0x810018200204102,
+    0x4002801a02003,
+    0x85040820080400,
+    0x810102c808880400,
+    0xe900410884800,
+    0x8002020480840102,
+    0x220200865090201,
+    0x2010100a02021202,
+    0x152048408022401,
+    0x20080002081110,
+    0x4001001021004000,
+    0x800040400a011002,
+    0xe4004081011002,
+    0x1c004001012080,
+    0x8004200962a00220,
+    0x8422100208500202,
+    0x2000402200300c08,
+    0x8646020080080080,
+    0x80020a0200100808,
+    0x2010004880111000,
+    0x623000a080011400,
+    0x42008c0340209202,
+    0x209188240001000,
+    0x400408a884001800,
+    0x110400a6080400,
+    0x1840060a44020800,
+    0x90080104000041,
+    0x201011000808101,
+    0x1a2208080504f080,
+    0x8012020600211212,
+    0x500861011240000,
+    0x180806108200800,
+    0x4000020e01040044,
+    0x300000261044000a,
+    0x802241102020002,
+    0x20906061210001,
+    0x5a84841004010310,
+    0x4010801011c04,
+    0xa010109502200,
+    0x4a02012000,
+    0x500201010098b028,
+    0x8040002811040900,
+    0x28000010020204,
+    0x6000020202d0240,
+    0x8918844842082200,
+    0x4010011029020020,
+];
+
 pub struct Square;
 impl Square {
     pub const A8: usize = 0;
@@ -98,15 +256,27 @@ pub fn pop_bit(board: &mut u64, square: usize) {
     *board &= !(1 << square)
 }
 
+pub struct SlidingTable {
+    mask: [u64; 64],
+    magic: [u64; 64],
+    shift: [u8; 64],
+    offset: [usize; 64],
+    data: Vec<u64>,
+}
+
 pub struct AttackTables {
     // 0 = black, 1 = white
     pawn_attacks: [[u64; 64]; 2],
     knight_attacks: [u64; 64],
     king_attacks: [u64; 64],
+
+    bishop_table: SlidingTable,
+    rook_table: SlidingTable,
 }
 
 impl AttackTables {
-    fn new() -> Self {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
         let mut pawn_attacks = [[0; 64]; 2];
         let mut knight_attacks = [0; 64];
         let mut king_attacks = [0u64; 64];
@@ -119,10 +289,14 @@ impl AttackTables {
             king_attacks[square] = Self::mask_king_attacks(square);
         }
 
+        let (bishop_table, rook_table) = Self::compute_sliding_attack_tables();
+
         AttackTables {
             pawn_attacks,
             knight_attacks,
             king_attacks,
+            bishop_table,
+            rook_table,
         }
     }
 
@@ -172,5 +346,223 @@ impl AttackTables {
         add_attack!(attacks, bitboard << 1, NOT_A_FILE);
 
         attacks
+    }
+
+    pub fn mask_bishop_attacks(square: usize) -> u64 {
+        let mut attacks = 0u64;
+
+        let rank = (square / 8) as i32;
+        let file = (square % 8) as i32;
+
+        const DIRECTIONS: [(i32, i32); 4] = [(1, 1), (-1, 1), (1, -1), (-1, -1)];
+
+        for (dr, df) in DIRECTIONS {
+            let mut r = rank + dr;
+            let mut f = file + df;
+
+            while (1..=6).contains(&r) && (1..=6).contains(&f) {
+                attacks |= 1u64 << (r * 8 + f);
+                r += dr;
+                f += df;
+            }
+        }
+
+        attacks
+    }
+
+    pub fn mask_rook_attacks(square: usize) -> u64 {
+        let mut attacks = 0u64;
+
+        let rank = (square / 8) as i32;
+        let file = (square % 8) as i32;
+
+        for r in (rank + 1)..=6 {
+            attacks |= 1u64 << (r * 8 + file);
+        }
+
+        for r in (1..rank).rev() {
+            attacks |= 1u64 << (r * 8 + file);
+        }
+
+        for f in (file + 1)..=6 {
+            attacks |= 1u64 << (rank * 8 + f);
+        }
+
+        for f in (1..file).rev() {
+            attacks |= 1u64 << (rank * 8 + f);
+        }
+
+        attacks
+    }
+
+    pub fn bishop_attacks_fly(square: usize, occupancy: u64) -> u64 {
+        let mut attack_mask = 0u64;
+
+        let rank = (square / 8) as i32;
+        let file = (square % 8) as i32;
+
+        let directions = [(1, 1), (-1, 1), (1, -1), (-1, -1)];
+
+        for &(dr, df) in &directions {
+            let mut r = rank + dr;
+            let mut f = file + df;
+
+            while (0..=7).contains(&r) && (0..=7).contains(&f) {
+                let target_square = (r * 8 + f) as u8;
+                let target_mask = 1u64 << target_square;
+
+                attack_mask |= target_mask;
+
+                if target_mask & occupancy != 0 {
+                    break;
+                }
+
+                r += dr;
+                f += df;
+            }
+        }
+
+        attack_mask
+    }
+
+    pub fn rook_attacks_fly(square: usize, occupancy: u64) -> u64 {
+        let mut attack_mask = 0u64;
+
+        let rank = (square / 8) as i32;
+        let file = (square % 8) as i32;
+
+        let directions = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+        for &(rank_delta, file_delta) in &directions {
+            let mut r = rank + rank_delta;
+            let mut f = file + file_delta;
+
+            while (0..=7).contains(&r) && (0..=7).contains(&f) {
+                let target_square = (r * 8 + f) as u8;
+                let target_mask = 1u64 << target_square;
+
+                attack_mask |= target_mask;
+
+                if target_mask & occupancy != 0 {
+                    break;
+                }
+
+                r += rank_delta;
+                f += file_delta;
+            }
+        }
+
+        attack_mask
+    }
+
+    pub fn set_occupancy(index: u32, bits_in_mask: u32, mut attack_mask: u64) -> u64 {
+        let mut occupancy = 0;
+
+        for count in 0..bits_in_mask {
+            let square = attack_mask.trailing_zeros();
+
+            attack_mask &= !(1 << (square));
+
+            if index & (1 << count) != 0 {
+                occupancy |= (1 << square);
+            }
+        }
+
+        occupancy
+    }
+
+    pub fn compute_sliding_attack_tables() -> (SlidingTable, SlidingTable) {
+        let mut bishop_masks = [0u64; 64];
+        let mut bishop_magic = [0u64; 64];
+        let mut bishop_shift = [0u8; 64];
+        let mut bishop_offset = [0usize; 64];
+
+        let mut rook_masks = [0u64; 64];
+        let mut rook_magic = [0u64; 64];
+        let mut rook_shift = [0u8; 64];
+        let mut rook_offset = [0usize; 64];
+
+        let total_bishop_entries: usize = BISHOP_RELEVANT_BITS.iter().map(|&bits| 1 << bits).sum();
+
+        let total_rook_entries: usize = ROOK_RELEVANT_BITS.iter().map(|&bits| 1 << bits).sum();
+
+        let mut bishop_data = Vec::with_capacity(total_bishop_entries);
+        let mut rook_data = Vec::with_capacity(total_rook_entries);
+
+        let mut bishop_current_offset = 0;
+        let mut rook_current_offset = 0;
+
+        for square in 0..64 {
+            bishop_masks[square] = Self::mask_bishop_attacks(square);
+            rook_masks[square] = Self::mask_rook_attacks(square);
+
+            bishop_magic[square] = BISHOP_MAGIC_NUMBERS[square];
+            bishop_shift[square] = (64 - BISHOP_RELEVANT_BITS[square]) as u8;
+
+            rook_magic[square] = ROOK_MAGIC_NUMBERS[square];
+            rook_shift[square] = (64 - ROOK_RELEVANT_BITS[square]) as u8;
+
+            let bishop_bits = BISHOP_RELEVANT_BITS[square] as usize;
+            let bishop_entries = 1 << bishop_bits;
+            bishop_offset[square] = bishop_current_offset;
+            bishop_current_offset += bishop_entries;
+            bishop_data.resize(bishop_current_offset, 0);
+
+            for index in 0..bishop_entries {
+                let occupancy =
+                    Self::set_occupancy(index as u32, bishop_bits as u32, bishop_masks[square]);
+                let magic_index = ((occupancy.wrapping_mul(bishop_magic[square]))
+                    >> bishop_shift[square]) as usize;
+                bishop_data[bishop_offset[square] + magic_index] =
+                    Self::bishop_attacks_fly(square, occupancy);
+            }
+
+            let rook_bits = ROOK_RELEVANT_BITS[square] as usize;
+            let rook_entries = 1 << rook_bits;
+            rook_offset[square] = rook_current_offset;
+            rook_current_offset += rook_entries;
+            rook_data.resize(rook_current_offset, 0);
+
+            for index in 0..rook_entries {
+                let occupancy =
+                    Self::set_occupancy(index as u32, rook_bits as u32, rook_masks[square]);
+                let magic_index =
+                    ((occupancy.wrapping_mul(rook_magic[square])) >> rook_shift[square]) as usize;
+                rook_data[rook_offset[square] + magic_index] =
+                    Self::rook_attacks_fly(square, occupancy);
+            }
+        }
+
+        let bishop_table = SlidingTable {
+            mask: bishop_masks,
+            magic: bishop_magic,
+            shift: bishop_shift,
+            offset: bishop_offset,
+            data: bishop_data,
+        };
+
+        let rook_table = SlidingTable {
+            mask: rook_masks,
+            magic: rook_magic,
+            shift: rook_shift,
+            offset: rook_offset,
+            data: rook_data,
+        };
+
+        (bishop_table, rook_table)
+    }
+
+    pub fn get_bishop_attacks(&self, square: usize, occupancy: u64) -> u64 {
+        let occ = occupancy & self.bishop_table.mask[square];
+        let index = ((occ.wrapping_mul(self.bishop_table.magic[square]))
+            >> self.bishop_table.shift[square]) as usize;
+        self.bishop_table.data[self.bishop_table.offset[square] + index]
+    }
+
+    pub fn get_rook_attacks(&self, square: usize, occupancy: u64) -> u64 {
+        let occ = occupancy & self.rook_table.mask[square];
+        let index = ((occ.wrapping_mul(self.rook_table.magic[square]))
+            >> self.rook_table.shift[square]) as usize;
+        self.rook_table.data[self.rook_table.offset[square] + index]
     }
 }

@@ -25,5 +25,9 @@ fn print_bitboard(board: u64) {
 }
 
 fn main() {
-    print_bitboard(AttackTables::mask_king_attacks(Square::E4));
+    let mut occupancy = 0;
+    set_bit(&mut occupancy, Square::E4);
+    set_bit(&mut occupancy, Square::F7);
+    let attacks = AttackTables::new();
+    print_bitboard(attacks.get_bishop_attacks(Square::D5, occupancy));
 }
