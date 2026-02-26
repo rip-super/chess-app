@@ -272,6 +272,15 @@ pub fn pop_bit(board: &mut u64, square: usize) {
 
 // region: Enums
 
+#[repr(usize)]
+#[derive(Copy, Clone)]
+pub enum Color {
+    White,
+    Black,
+}
+
+#[repr(usize)]
+#[derive(Copy, Clone)]
 pub enum Piece {
     Pawn,
     Knight,
@@ -401,70 +410,9 @@ fn create_magic_numbers(seed: u32) {
 
 // endregion
 
-// region: Bitboards
-
-#[derive(Clone, Copy, Default)]
-pub struct Bitboards {
-    wp: u64,
-    wn: u64,
-    wb: u64,
-    wr: u64,
-    wq: u64,
-    wk: u64,
-    bp: u64,
-    bn: u64,
-    bb: u64,
-    br: u64,
-    bq: u64,
-    bk: u64,
-}
-
-impl Bitboards {
-    pub fn new() -> Bitboards {
-        Bitboards {
-            wp: 0x000000000000FF00,
-            wn: 0x0000000000000042,
-            wb: 0x0000000000000024,
-            wr: 0x0000000000000081,
-            wq: 0x0000000000000008,
-            wk: 0x0000000000000010,
-            bp: 0x00FF000000000000,
-            bn: 0x4200000000000000,
-            bb: 0x2400000000000000,
-            br: 0x8100000000000000,
-            bq: 0x0800000000000000,
-            bk: 0x1000000000000000,
-        }
-    }
-
-    fn white(&self) -> u64 {
-        self.wp | self.wn | self.wb | self.wr | self.wq | self.wk
-    }
-
-    fn black(&self) -> u64 {
-        self.bp | self.bn | self.bb | self.br | self.bq | self.bk
-    }
-
-    fn all(&self) -> u64 {
-        self.wp
-            | self.wn
-            | self.wb
-            | self.wr
-            | self.wq
-            | self.wk
-            | self.bp
-            | self.bn
-            | self.bb
-            | self.br
-            | self.bq
-            | self.bk
-    }
-}
-
-// endregion
-
 // region: Attack Tables
 
+#[derive(Clone)]
 pub struct SlidingTable {
     mask: [u64; 64],
     magic: [u64; 64],
@@ -473,6 +421,7 @@ pub struct SlidingTable {
     data: Vec<u64>,
 }
 
+#[derive(Clone)]
 pub struct AttackTables {
     // 0 = black, 1 = white
     pawn_attacks: [[u64; 64]; 2],
@@ -774,6 +723,236 @@ impl AttackTables {
             >> self.rook_table.shift[square]) as usize;
         self.rook_table.data[self.rook_table.offset[square] + index]
     }
+}
+
+// endregion
+
+// region: Bitboards
+
+#[derive(Clone, Copy, Default)]
+pub struct Bitboards {
+    // [color][piece]
+    pieces: [[u64; 6]; 2],
+}
+
+impl Bitboards {
+    pub fn new() -> Bitboards {
+        Bitboards {
+            pieces: [
+                [
+                    0x000000000000FF00,
+                    0x0000000000000042,
+                    0x0000000000000024,
+                    0x0000000000000081,
+                    0x0000000000000008,
+                    0x0000000000000010,
+                ],
+                [
+                    0x00FF000000000000,
+                    0x4200000000000000,
+                    0x2400000000000000,
+                    0x8100000000000000,
+                    0x0800000000000000,
+                    0x1000000000000000,
+                ],
+            ],
+        }
+    }
+
+    fn white(&self) -> u64 {
+        self.pieces[Color::White as usize]
+            .iter()
+            .fold(0, |acc, bb| acc | bb)
+    }
+
+    fn black(&self) -> u64 {
+        self.pieces[Color::Black as usize]
+            .iter()
+            .fold(0, |acc, bb| acc | bb)
+    }
+
+    fn all(&self) -> u64 {
+        self.white() | self.black()
+    }
+}
+
+// endregion
+
+// region: Moves
+
+#[derive(Copy, Clone)]
+pub enum MoveFlag {
+    Quiet,
+    Capture,
+    DoublePawnPush,
+    KingCastle,
+    QueenCastle,
+    EnPassant,
+    Promotion,
+    PromotionCapture,
+}
+
+#[derive(Copy, Clone)]
+pub struct Move {
+    pub from: u8,
+    pub to: u8,
+    pub promotion: Option<Piece>,
+    pub flag: MoveFlag,
+}
+
+#[derive(Copy, Clone)]
+pub struct Undo {
+    pub captured: Option<Piece>,
+    pub castling_rights: u8,
+    pub en_passant: Option<u8>,
+    pub halfmove_clock: u32,
+}
+
+// endregion
+
+// region: Position
+
+#[derive(Copy, Clone)]
+pub struct Position {
+    pub bitboards: Bitboards,
+    pub side_to_move: Color,
+    pub castling_rights: u8, // 1 bit per thing
+    pub en_passant: Option<u8>,
+    pub halfmove_clock: u32,
+}
+
+impl Position {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            bitboards: Bitboards::new(),
+            side_to_move: Color::White,
+            castling_rights: 0b1111,
+            en_passant: None,
+            halfmove_clock: 0,
+        }
+    }
+
+    pub fn from_fen(fen: &str) -> Self {
+        if fen == "startpos" {
+            return Self::new();
+        }
+
+        let parts: Vec<&str> = fen.split_whitespace().collect();
+        assert!(parts.len() >= 6, "Invalid FEN: expected at least 6 fields");
+
+        let piece_placement = parts[0];
+        let active_color = parts[1];
+        let castling_rights_str = parts[2];
+        let en_passant_str = parts[3];
+        let halfmove_clock: u32 = parts[4].parse().unwrap_or(0);
+
+        let mut bitboards = Bitboards::new();
+
+        for (rank_idx, row) in piece_placement.split("/").enumerate() {
+            let mut file = 0;
+            for ch in row.chars() {
+                if ch.is_ascii_digit() {
+                    file += ch.to_digit(10).unwrap() as usize;
+                } else {
+                    let sq = (7 - rank_idx) * 8 + file;
+                    let (color, piece) = match ch {
+                        'P' => (Color::White, Piece::Pawn),
+                        'N' => (Color::White, Piece::Knight),
+                        'B' => (Color::White, Piece::Bishop),
+                        'R' => (Color::White, Piece::Rook),
+                        'Q' => (Color::White, Piece::Queen),
+                        'K' => (Color::White, Piece::King),
+                        'p' => (Color::Black, Piece::Pawn),
+                        'n' => (Color::Black, Piece::Knight),
+                        'b' => (Color::Black, Piece::Bishop),
+                        'r' => (Color::Black, Piece::Rook),
+                        'q' => (Color::Black, Piece::Queen),
+                        'k' => (Color::Black, Piece::King),
+                        _ => panic!("Invalid piece in FEN: {}", ch),
+                    };
+
+                    bitboards.pieces[color as usize][piece as usize] |= 1 << sq;
+                    file += 1;
+                }
+            }
+        }
+
+        assert!(
+            bitboards.pieces[Color::White as usize][Piece::King as usize] != 0,
+            "No white king"
+        );
+        assert!(
+            bitboards.pieces[Color::Black as usize][Piece::King as usize] != 0,
+            "No black king"
+        );
+
+        let side_to_move = match active_color {
+            "w" => Color::White,
+            "b" => Color::Black,
+            _ => panic!("Invalid active color: {}", active_color),
+        };
+
+        let mut castling_rights = 0u8;
+        for c in castling_rights_str.chars() {
+            match c {
+                'K' => castling_rights |= 1 << 0,
+                'Q' => castling_rights |= 1 << 1,
+                'k' => castling_rights |= 1 << 2,
+                'q' => castling_rights |= 1 << 3,
+                '-' => {}
+                _ => panic!("Invalid castling right: {}", c),
+            }
+        }
+
+        let en_passant = if en_passant_str != "-" {
+            let b = en_passant_str.as_bytes();
+            let file = b[0] - b'a';
+            let rank = b[1] - b'1';
+            Some(rank * 8 + file)
+        } else {
+            None
+        };
+
+        Self {
+            bitboards,
+            side_to_move,
+            castling_rights,
+            en_passant,
+            halfmove_clock,
+        }
+    }
+
+    pub fn piece_on(&self, square: u8) -> Option<(Color, Piece)> {
+        let mask = 1 << square;
+
+        for color in [Color::White, Color::Black] {
+            for piece in [
+                Piece::Pawn,
+                Piece::Knight,
+                Piece::Bishop,
+                Piece::Rook,
+                Piece::Queen,
+                Piece::King,
+            ] {
+                let board = self.bitboards.pieces[color as usize][piece as usize];
+
+                if board & mask != 0 {
+                    return Some((color, piece));
+                }
+            }
+        }
+
+        None
+    }
+
+    // pub fn make_move(&mut self, mv: Move) -> Undo {}
+
+    // pub fn undo_move(&mut self, mv: Move, undo: Undo) {}
+
+    // pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {}
+
+    // pub fn get_legal_moves(&self) -> Vec<Move> {}
 }
 
 // endregion
