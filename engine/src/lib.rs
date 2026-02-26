@@ -923,6 +923,90 @@ impl Position {
         }
     }
 
+    pub fn to_fen(&self) -> String {
+        let mut fen = String::new();
+
+        for rank in (0..8).rev() {
+            let mut empty_count = 0;
+            for file in 0..8 {
+                let sq = rank * 8 + file;
+                if let Some((color, piece)) = self.piece_on(sq) {
+                    if empty_count != 0 {
+                        fen.push_str(&empty_count.to_string());
+                        empty_count = 0;
+                    }
+                    let ch = match (color, piece) {
+                        (Color::White, Piece::Pawn) => 'P',
+                        (Color::White, Piece::Knight) => 'N',
+                        (Color::White, Piece::Bishop) => 'B',
+                        (Color::White, Piece::Rook) => 'R',
+                        (Color::White, Piece::Queen) => 'Q',
+                        (Color::White, Piece::King) => 'K',
+                        (Color::Black, Piece::Pawn) => 'p',
+                        (Color::Black, Piece::Knight) => 'n',
+                        (Color::Black, Piece::Bishop) => 'b',
+                        (Color::Black, Piece::Rook) => 'r',
+                        (Color::Black, Piece::Queen) => 'q',
+                        (Color::Black, Piece::King) => 'k',
+                    };
+                    fen.push(ch);
+                } else {
+                    empty_count += 1;
+                }
+            }
+            if empty_count != 0 {
+                fen.push_str(&empty_count.to_string());
+            }
+            if rank != 0 {
+                fen.push('/');
+            }
+        }
+
+        let stm = match self.side_to_move {
+            Color::White => " w",
+            Color::Black => " b",
+        };
+        fen.push_str(stm);
+
+        let mut castling = String::new();
+        if self.castling_rights & 1 != 0 {
+            castling.push('K');
+        }
+        if self.castling_rights & 2 != 0 {
+            castling.push('Q');
+        }
+        if self.castling_rights & 4 != 0 {
+            castling.push('k');
+        }
+        if self.castling_rights & 8 != 0 {
+            castling.push('q');
+        }
+        if castling.is_empty() {
+            castling.push('-');
+        }
+        fen.push(' ');
+        fen.push_str(&castling);
+
+        fen.push(' ');
+        if let Some(ep) = self.en_passant {
+            let file = (ep % 8) + b'a';
+            let rank = (ep / 8) + b'1';
+            fen.push(file as char);
+            fen.push(rank as char);
+        } else {
+            fen.push('-');
+        }
+
+        fen.push(' ');
+        fen.push_str(&self.halfmove_clock.to_string());
+
+        let fullmove = (self.halfmove_clock / 2) + 1;
+        fen.push(' ');
+        fen.push_str(&fullmove.to_string());
+
+        fen
+    }
+
     pub fn piece_on(&self, square: u8) -> Option<(Color, Piece)> {
         let mask = 1 << square;
 
