@@ -1738,11 +1738,17 @@ impl Position {
         for from in BitIter::new(king) {
             let attacks = self.attack_tables.king_attacks[from as usize] & !our_pieces;
             for to in BitIter::new(attacks) {
+                let flag = if (1u64 << to) & enemy_occupancy != 0 {
+                    MoveFlag::Capture
+                } else {
+                    MoveFlag::Quiet
+                };
+
                 moves.push(Move {
                     from,
                     to,
                     promotion: None,
-                    flag: MoveFlag::Quiet,
+                    flag,
                 });
             }
         }
@@ -1968,25 +1974,30 @@ impl GameState {
 // region: Perft
 
 fn perft(gs: &mut GameState, depth: u32) -> u64 {
-    if depth == 0 {
-        return 1;
+    fn perft_pos(pos: &mut Position, depth: u32) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+
+        let moves = pos.get_pseudo_legal_moves();
+
+        let mut nodes = 0;
+        let side_before = pos.side_to_move;
+
+        for mv in moves {
+            let undo = pos.make_move(mv);
+
+            if !pos.is_in_check(side_before) {
+                nodes += perft_pos(pos, depth - 1);
+            }
+
+            pos.undo_move(mv, undo);
+        }
+
+        nodes
     }
 
-    let moves = gs.position.get_legal_moves();
-
-    if depth == 1 {
-        return moves.len() as u64;
-    }
-
-    let mut nodes = 0;
-
-    for mv in moves {
-        gs.make_move(mv);
-        nodes += perft(gs, depth - 1);
-        gs.undo_move();
-    }
-
-    nodes
+    perft_pos(&mut gs.position, depth)
 }
 
 #[cfg(test)]
