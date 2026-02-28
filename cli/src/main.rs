@@ -154,6 +154,9 @@ pub fn print_position(pos: &Position) {
         println!("En passant: -");
     }
 
+    println!("White in check: {}", pos.is_in_check(Color::White));
+    println!("Black in check: {}", pos.is_in_check(Color::Black));
+
     println!("Halfmove clock: {}", pos.halfmove_clock);
 }
 
