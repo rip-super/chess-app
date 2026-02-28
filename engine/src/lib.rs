@@ -1613,7 +1613,7 @@ impl Position {
     }
 
     pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {
-        let mut moves = Vec::new();
+        let mut moves = Vec::with_capacity(80);
         let color = self.side_to_move;
         let idx = color as usize;
         let enemy_idx = color.opposite() as usize;
