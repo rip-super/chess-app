@@ -853,6 +853,53 @@ pub struct Undo {
 
 // endregion
 
+// region: Zobrist Hash
+
+#[derive(Clone)]
+pub struct ZobristKeys {
+    pieces: [[[u64; 64]; 6]; 2], // [color][piece][square]
+    castling: [u64; 4],
+    en_passant: [u64; 8],
+    side_to_move: u64,
+}
+
+impl ZobristKeys {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        let mut rng = Rng::new(0x3D1E32C2);
+
+        let mut pieces = [[[0; 64]; 6]; 2];
+        for color in &mut pieces {
+            for piece in color {
+                for sq in piece {
+                    *sq = rng.next_u64();
+                }
+            }
+        }
+
+        let mut castling = [0u64; 4];
+        for castle in &mut castling {
+            *castle = rng.next_u64();
+        }
+
+        let mut en_passant = [0u64; 8];
+        for ep in &mut en_passant {
+            *ep = rng.next_u64();
+        }
+
+        let side_to_move = rng.next_u64();
+
+        Self {
+            pieces,
+            castling,
+            en_passant,
+            side_to_move,
+        }
+    }
+}
+
+// endregion
+
 // region: Position
 
 #[derive(Clone)]
@@ -863,6 +910,7 @@ pub struct Position {
     pub en_passant: Option<u8>,
     pub halfmove_clock: u32,
     pub attack_tables: AttackTables,
+    pub zobrist_keys: ZobristKeys,
 }
 
 impl Position {
@@ -875,6 +923,7 @@ impl Position {
             en_passant: None,
             halfmove_clock: 0,
             attack_tables: AttackTables::new(),
+            zobrist_keys: ZobristKeys::new(),
         }
     }
 
@@ -966,6 +1015,7 @@ impl Position {
             en_passant,
             halfmove_clock,
             attack_tables: AttackTables::new(),
+            zobrist_keys: ZobristKeys::new(),
         }
     }
 
@@ -1051,6 +1101,45 @@ impl Position {
         fen.push_str(&fullmove.to_string());
 
         fen
+    }
+
+    pub fn zobrist_hash(&self) -> u64 {
+        let mut hash = 0;
+
+        for color in 0..2 {
+            for piece in 0..6 {
+                let mut bb = self.bitboards.pieces[color][piece];
+                while bb != 0 {
+                    let sq = bb.trailing_zeros() as usize;
+                    hash ^= self.zobrist_keys.pieces[color][piece][sq];
+                    bb &= bb - 1;
+                }
+            }
+        }
+
+        if self.castling_rights & 0b0001 != 0 {
+            hash ^= self.zobrist_keys.castling[0];
+        }
+        if self.castling_rights & 0b0010 != 0 {
+            hash ^= self.zobrist_keys.castling[1];
+        }
+        if self.castling_rights & 0b0100 != 0 {
+            hash ^= self.zobrist_keys.castling[2];
+        }
+        if self.castling_rights & 0b1000 != 0 {
+            hash ^= self.zobrist_keys.castling[3];
+        }
+
+        if let Some(ep) = self.en_passant {
+            let file = ep % 8;
+            hash ^= self.zobrist_keys.en_passant[file as usize];
+        }
+
+        if self.side_to_move == Color::White {
+            hash ^= self.zobrist_keys.side_to_move;
+        }
+
+        hash
     }
 
     pub fn piece_on(&self, square: u8) -> Option<(Color, Piece)> {
@@ -1644,5 +1733,185 @@ impl Position {
 // endregion
 
 // region: GameState
+
+use std::collections::HashMap;
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum GameResult {
+    Ongoing,
+    Checkmate(Color),
+    Stalemate,
+    DrawRepetition,
+    DrawFiftyMove,
+    DrawInsufficientMaterial,
+}
+
+pub struct GameState {
+    pub position: Position,
+    history: Vec<(Move, Undo)>,
+    repetition_table: HashMap<u64, u32>,
+    pub result: GameResult,
+}
+
+impl GameState {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        let mut position = Position::new();
+
+        let mut repetition_table = HashMap::new();
+        repetition_table.insert(position.zobrist_hash(), 1);
+
+        Self {
+            position,
+            history: Vec::new(),
+            repetition_table,
+            result: GameResult::Ongoing,
+        }
+    }
+
+    pub fn from_fen(fen: &str) -> Self {
+        let position = Position::from_fen(fen);
+
+        Self {
+            position,
+            history: Vec::new(),
+            repetition_table: HashMap::new(),
+            result: GameResult::Ongoing,
+        }
+    }
+
+    fn update_repetition(&mut self) {
+        let hash = self.position.zobrist_hash();
+        let count = self.repetition_table.entry(hash).or_insert(0);
+        *count += 1;
+    }
+
+    fn decrement_repetition(&mut self) {
+        let hash = self.position.zobrist_hash();
+        if let Some(count) = self.repetition_table.get_mut(&hash) {
+            *count -= 1;
+        }
+    }
+
+    pub fn is_insufficient_material(&self) -> bool {
+        use Color::*;
+        use Piece::*;
+
+        let wp = self.position.bitboards.pieces[White as usize][Pawn as usize];
+        let bp = self.position.bitboards.pieces[Black as usize][Pawn as usize];
+        let wr = self.position.bitboards.pieces[White as usize][Rook as usize];
+        let br = self.position.bitboards.pieces[Black as usize][Rook as usize];
+        let wq = self.position.bitboards.pieces[White as usize][Queen as usize];
+        let bq = self.position.bitboards.pieces[Black as usize][Queen as usize];
+        let wn = self.position.bitboards.pieces[White as usize][Knight as usize];
+        let bn = self.position.bitboards.pieces[Black as usize][Knight as usize];
+        let wb = self.position.bitboards.pieces[White as usize][Bishop as usize];
+        let bb = self.position.bitboards.pieces[Black as usize][Bishop as usize];
+
+        if wp != 0 || bp != 0 || wr != 0 || br != 0 || wq != 0 || bq != 0 {
+            return false;
+        }
+
+        let white_minor_count = (wn | wb).count_ones();
+        let black_minor_count = (bn | bb).count_ones();
+
+        if white_minor_count == 0 && black_minor_count == 0 {
+            return true;
+        }
+
+        if (white_minor_count == 1 && black_minor_count == 0)
+            || (white_minor_count == 0 && black_minor_count == 1)
+        {
+            return true;
+        }
+
+        if white_minor_count == 1 && black_minor_count == 1 && wn == 0 && bn == 0 {
+            let light_squares: u64 = 0x55AA55AA55AA55AA;
+            let dark_squares: u64 = !light_squares;
+
+            let white_bishop_on_light = (wb & light_squares) != 0;
+            let black_bishop_on_light = (bb & light_squares) != 0;
+
+            return white_bishop_on_light == black_bishop_on_light;
+        }
+
+        if (white_minor_count == 1 && black_minor_count == 1) {
+            let white_has_bishop = wb != 0;
+            let black_has_bishop = bb != 0;
+            let white_has_knight = wn != 0;
+            let black_has_knight = bn != 0;
+
+            if (white_has_bishop && black_has_knight && wn == 0 && bb == 0)
+                || (white_has_knight && black_has_bishop && wb == 0 && bn == 0)
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn update_game_result(&mut self, legal: &[Move]) {
+        if legal.is_empty() {
+            if self.position.is_in_check(self.position.side_to_move) {
+                let winner = self.position.side_to_move.opposite();
+                self.result = GameResult::Checkmate(winner);
+            } else {
+                self.result = GameResult::Stalemate;
+            }
+            return;
+        }
+
+        if self.position.halfmove_clock >= 100 {
+            self.result = GameResult::DrawFiftyMove;
+            return;
+        }
+
+        let hash = self.position.zobrist_hash();
+        if let Some(&count) = self.repetition_table.get(&hash) {
+            if count >= 3 {
+                self.result = GameResult::DrawRepetition;
+                return;
+            }
+        }
+
+        if self.is_insufficient_material() {
+            self.result = GameResult::DrawInsufficientMaterial;
+            return;
+        }
+
+        self.result = GameResult::Ongoing;
+    }
+
+    pub fn make_move(&mut self, mv: Move) -> Result<(), &str> {
+        if self.result != GameResult::Ongoing {
+            return Err("Game already finished");
+        }
+
+        let legal = self.position.get_legal_moves();
+
+        if !legal.contains(&mv) {
+            return Err("Illegal Move");
+        }
+
+        let undo = self.position.make_move(mv);
+        self.history.push((mv, undo));
+
+        self.update_repetition();
+        self.update_game_result(&legal);
+
+        Ok(())
+    }
+
+    pub fn undo_move(&mut self) {
+        if let Some((mv, undo)) = self.history.pop() {
+            self.position.undo_move(mv, undo);
+            self.decrement_repetition();
+
+            let legal = self.position.get_legal_moves();
+            self.update_game_result(&legal);
+        }
+    }
+}
 
 // endregion
