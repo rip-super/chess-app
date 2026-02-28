@@ -849,6 +849,7 @@ pub struct Undo {
     pub castling_rights: u8,
     pub en_passant: Option<u8>,
     pub halfmove_clock: u32,
+    pub fullmove_count: u32,
 }
 
 // endregion
@@ -909,6 +910,7 @@ pub struct Position {
     pub castling_rights: u8, // 1 bit per thing
     pub en_passant: Option<u8>,
     pub halfmove_clock: u32,
+    pub fullmove_count: u32,
     pub attack_tables: AttackTables,
     pub zobrist_keys: ZobristKeys,
 }
@@ -922,6 +924,7 @@ impl Position {
             castling_rights: 0b1111,
             en_passant: None,
             halfmove_clock: 0,
+            fullmove_count: 1,
             attack_tables: AttackTables::new(),
             zobrist_keys: ZobristKeys::new(),
         }
@@ -940,6 +943,7 @@ impl Position {
         let castling_rights_str = parts[2];
         let en_passant_str = parts[3];
         let halfmove_clock: u32 = parts[4].parse().unwrap_or(0);
+        let fullmove_count: u32 = parts[5].parse().unwrap_or(1);
 
         let mut bitboards = Bitboards::empty();
 
@@ -1014,6 +1018,7 @@ impl Position {
             castling_rights,
             en_passant,
             halfmove_clock,
+            fullmove_count,
             attack_tables: AttackTables::new(),
             zobrist_keys: ZobristKeys::new(),
         }
@@ -1096,9 +1101,8 @@ impl Position {
         fen.push(' ');
         fen.push_str(&self.halfmove_clock.to_string());
 
-        let fullmove = (self.halfmove_clock / 2) + 1;
         fen.push(' ');
-        fen.push_str(&fullmove.to_string());
+        fen.push_str(&self.fullmove_count.to_string());
 
         fen
     }
@@ -1222,17 +1226,24 @@ impl Position {
     }
 
     pub fn make_move(&mut self, mv: Move) -> Undo {
+        let moved_piece = self.piece_on(mv.from).expect("No piece on from-square").1;
+
         let undo = Undo {
             captured: self.piece_on(mv.to).map(|(_, piece)| piece),
             castling_rights: self.castling_rights,
             en_passant: self.en_passant,
             halfmove_clock: self.halfmove_clock,
+            fullmove_count: self.fullmove_count,
         };
 
-        if matches!(
+        let is_capture = matches!(
             mv.flag,
-            MoveFlag::Capture | MoveFlag::PromotionCapture | MoveFlag::Promotion
-        ) {
+            MoveFlag::Capture | MoveFlag::PromotionCapture | MoveFlag::EnPassant
+        );
+        let is_pawn_move = moved_piece == Piece::Pawn
+            || matches!(mv.flag, MoveFlag::Promotion | MoveFlag::PromotionCapture);
+
+        if is_capture || is_pawn_move {
             self.halfmove_clock = 0;
         } else {
             self.halfmove_clock += 1;
@@ -1244,29 +1255,43 @@ impl Position {
             } else {
                 mv.to + 8
             };
-            let color_idx = 1 - self.side_to_move as usize;
-            let pawn_idx = Piece::Pawn as usize;
-            self.bitboards.pieces[color_idx][pawn_idx] &= !(1u64 << cap_sq);
+            let captured_color = self.side_to_move.opposite() as usize;
+            self.bitboards.pieces[captured_color][Piece::Pawn as usize] &= !(1u64 << cap_sq);
         }
 
         let color_idx = self.side_to_move as usize;
-        let piece_idx = self.piece_on(mv.from).unwrap().1 as usize;
+        let piece_idx = moved_piece as usize;
 
         match mv.flag {
             MoveFlag::Promotion | MoveFlag::PromotionCapture => {
-                let promo_idx = mv.promotion.unwrap() as usize;
-                self.bitboards.pieces[color_idx][promo_idx] |= 1u64 << mv.to;
+                let promo_idx = mv
+                    .promotion
+                    .expect("Promotion move missing promotion piece")
+                    as usize;
                 self.bitboards.pieces[color_idx][Piece::Pawn as usize] &= !(1u64 << mv.from);
+                self.bitboards.pieces[color_idx][promo_idx] |= 1u64 << mv.to;
             }
             _ => {
-                self.bitboards.pieces[color_idx][piece_idx] |= 1u64 << mv.to;
                 self.bitboards.pieces[color_idx][piece_idx] &= !(1u64 << mv.from);
+                self.bitboards.pieces[color_idx][piece_idx] |= 1u64 << mv.to;
             }
         }
 
         if let Some(captured) = undo.captured {
-            let captured_color = 1 - color_idx;
-            self.bitboards.pieces[captured_color][captured as usize] &= !(1u64 << mv.to);
+            if mv.flag != MoveFlag::EnPassant {
+                let captured_color_idx = 1 - color_idx;
+                self.bitboards.pieces[captured_color_idx][captured as usize] &= !(1u64 << mv.to);
+            }
+        }
+
+        if undo.captured == Some(Piece::Rook) && mv.flag != MoveFlag::EnPassant {
+            match mv.to {
+                0 => self.castling_rights &= !0b0010,
+                7 => self.castling_rights &= !0b0001,
+                56 => self.castling_rights &= !0b1000,
+                63 => self.castling_rights &= !0b0100,
+                _ => {}
+            }
         }
 
         match mv.flag {
@@ -1295,23 +1320,23 @@ impl Position {
 
         match self.side_to_move {
             Color::White => {
-                if piece_idx == Piece::King as usize {
-                    self.castling_rights &= !0b11;
+                if moved_piece == Piece::King {
+                    self.castling_rights &= !0b0011;
                 }
-                if piece_idx == Piece::Rook as usize {
+                if moved_piece == Piece::Rook {
                     if mv.from == 0 {
-                        self.castling_rights &= !0b10;
+                        self.castling_rights &= !0b0010;
                     }
                     if mv.from == 7 {
-                        self.castling_rights &= !0b01;
+                        self.castling_rights &= !0b0001;
                     }
                 }
             }
             Color::Black => {
-                if piece_idx == Piece::King as usize {
+                if moved_piece == Piece::King {
                     self.castling_rights &= !0b1100;
                 }
-                if piece_idx == Piece::Rook as usize {
+                if moved_piece == Piece::Rook {
                     if mv.from == 56 {
                         self.castling_rights &= !0b1000;
                     }
@@ -1331,10 +1356,11 @@ impl Position {
             _ => None,
         };
 
-        self.side_to_move = match self.side_to_move {
-            Color::White => Color::Black,
-            Color::Black => Color::White,
-        };
+        if self.side_to_move == Color::Black {
+            self.fullmove_count += 1;
+        }
+
+        self.side_to_move = self.side_to_move.opposite();
 
         undo
     }
@@ -1539,6 +1565,8 @@ impl Position {
             return;
         }
 
+        let e = rank * 8 + 4;
+
         let king_side_mask = if self.side_to_move == Color::White {
             0b0001
         } else {
@@ -1547,9 +1575,15 @@ impl Position {
         if self.castling_rights & king_side_mask != 0 {
             let f = rank * 8 + 5;
             let g = rank * 8 + 6;
-            let e = rank * 8 + 4;
+            let rook_sq = rank * 8 + 7;
 
-            if self.piece_on(f as u8).is_none()
+            let rook_ok = matches!(
+                self.piece_on(rook_sq as u8),
+                Some((c, Piece::Rook)) if c == self.side_to_move
+            );
+
+            if rook_ok
+                && self.piece_on(f as u8).is_none()
                 && self.piece_on(g as u8).is_none()
                 && !self.square_under_attack(f as u8, enemy_color)
                 && !self.square_under_attack(g as u8, enemy_color)
@@ -1572,9 +1606,15 @@ impl Position {
             let d = rank * 8 + 3;
             let c = rank * 8 + 2;
             let b = rank * 8 + 1;
-            let e = rank * 8 + 4;
+            let rook_sq = rank * 8;
 
-            if self.piece_on(d as u8).is_none()
+            let rook_ok = matches!(
+                self.piece_on(rook_sq as u8),
+                Some((col, Piece::Rook)) if col == self.side_to_move
+            );
+
+            if rook_ok
+                && self.piece_on(d as u8).is_none()
                 && self.piece_on(c as u8).is_none()
                 && self.piece_on(b as u8).is_none()
                 && !self.square_under_attack(d as u8, enemy_color)
@@ -1786,10 +1826,13 @@ impl GameState {
         *count += 1;
     }
 
-    fn decrement_repetition(&mut self) {
-        let hash = self.position.zobrist_hash();
+    fn decrement_repetition(&mut self, hash: u64) {
         if let Some(count) = self.repetition_table.get_mut(&hash) {
-            *count -= 1;
+            if *count > 1 {
+                *count -= 1;
+            } else {
+                self.repetition_table.remove(&hash);
+            }
         }
     }
 
@@ -1905,8 +1948,11 @@ impl GameState {
 
     pub fn undo_move(&mut self) {
         if let Some((mv, undo)) = self.history.pop() {
+            let hash_to_remove = self.position.zobrist_hash();
+
             self.position.undo_move(mv, undo);
-            self.decrement_repetition();
+
+            self.decrement_repetition(hash_to_remove);
 
             let legal = self.position.get_legal_moves();
             self.update_game_result(&legal);
