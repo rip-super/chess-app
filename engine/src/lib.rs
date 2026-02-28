@@ -1621,8 +1621,23 @@ impl Position {
         moves
     }
 
-    pub fn get_legal_moves(&self) -> Vec<Move> {
-        self.get_pseudo_legal_moves()
+    pub fn get_legal_moves(&mut self) -> Vec<Move> {
+        let pseudo = self.get_pseudo_legal_moves();
+        let mut legal = Vec::with_capacity(pseudo.len());
+
+        let side = self.side_to_move;
+
+        for mv in pseudo {
+            let undo = self.make_move(mv);
+
+            if !self.is_in_check(side) {
+                legal.push(mv);
+            }
+
+            self.undo_move(mv, undo);
+        }
+
+        legal
     }
 }
 
