@@ -2,10 +2,6 @@
 
 // region: Macros
 
-macro_rules! nofmt {
-    ($($code:tt)*) => { $($code)* }
-}
-
 macro_rules! add_attack {
     ($attacks:ident, $shifted:expr, $mask:expr) => {
         if $shifted & $mask != 0 {
@@ -258,22 +254,6 @@ impl Square {
 
 // endregion
 
-// region: Bit Helpers
-
-pub fn get_bit(board: u64, square: usize) -> usize {
-    ((board >> square) & 1) as usize
-}
-
-pub fn set_bit(board: &mut u64, square: usize) {
-    *board |= 1 << square
-}
-
-pub fn pop_bit(board: &mut u64, square: usize) {
-    *board &= !(1 << square)
-}
-
-// endregion
-
 // region: Enums
 
 #[repr(usize)]
@@ -345,7 +325,7 @@ impl Rng {
 
 // endregion
 
-// region: Magics
+// region: Magic
 
 fn find_magic_number(
     square: usize,
@@ -1828,6 +1808,40 @@ impl GameState {
         }
     }
 
+    pub fn make_move(&mut self, mv: Move) -> Result<(), &str> {
+        if self.result != GameResult::Ongoing {
+            return Err("Game already finished");
+        }
+
+        let legal_before = self.position.get_legal_moves();
+        if !legal_before.contains(&mv) {
+            return Err("Illegal Move");
+        }
+
+        let undo = self.position.make_move(mv);
+        self.history.push((mv, undo));
+
+        self.update_repetition();
+
+        let legal_after = self.position.get_legal_moves();
+        self.update_game_result(&legal_after);
+
+        Ok(())
+    }
+
+    pub fn undo_move(&mut self) {
+        if let Some((mv, undo)) = self.history.pop() {
+            let hash_to_remove = self.position.zobrist_hash();
+
+            self.position.undo_move(mv, undo);
+
+            self.decrement_repetition(hash_to_remove);
+
+            let legal = self.position.get_legal_moves();
+            self.update_game_result(&legal);
+        }
+    }
+
     fn update_repetition(&mut self) {
         let hash = self.position.zobrist_hash();
         let count = self.repetition_table.entry(hash).or_insert(0);
@@ -1844,7 +1858,7 @@ impl GameState {
         }
     }
 
-    pub fn is_insufficient_material(&self) -> bool {
+    fn is_insufficient_material(&self) -> bool {
         use Color::*;
         use Piece::*;
 
@@ -1932,40 +1946,6 @@ impl GameState {
         }
 
         self.result = GameResult::Ongoing;
-    }
-
-    pub fn make_move(&mut self, mv: Move) -> Result<(), &str> {
-        if self.result != GameResult::Ongoing {
-            return Err("Game already finished");
-        }
-
-        let legal_before = self.position.get_legal_moves();
-        if !legal_before.contains(&mv) {
-            return Err("Illegal Move");
-        }
-
-        let undo = self.position.make_move(mv);
-        self.history.push((mv, undo));
-
-        self.update_repetition();
-
-        let legal_after = self.position.get_legal_moves();
-        self.update_game_result(&legal_after);
-
-        Ok(())
-    }
-
-    pub fn undo_move(&mut self) {
-        if let Some((mv, undo)) = self.history.pop() {
-            let hash_to_remove = self.position.zobrist_hash();
-
-            self.position.undo_move(mv, undo);
-
-            self.decrement_repetition(hash_to_remove);
-
-            let legal = self.position.get_legal_moves();
-            self.update_game_result(&legal);
-        }
     }
 }
 
