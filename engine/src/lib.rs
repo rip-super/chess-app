@@ -1,7 +1,5 @@
 #![allow(unused)]
 
-use std::sync::LazyLock;
-
 // region: Macros
 
 macro_rules! nofmt {
@@ -19,8 +17,6 @@ macro_rules! add_attack {
 // endregion
 
 // region: Constants
-
-static ATTACK_TABLES: LazyLock<AttackTables> = LazyLock::new(AttackTables::new);
 
 const NOT_A_FILE: u64 = 0xFEFEFEFEFEFEFEFE;
 const NOT_H_FILE: u64 = 0x7F7F7F7F7F7F7F7F;
@@ -287,8 +283,17 @@ pub enum Color {
     Black,
 }
 
+impl Color {
+    pub fn opposite(&self) -> Color {
+        match self {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        }
+    }
+}
+
 #[repr(usize)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum Piece {
     Pawn,
     Knight,
@@ -413,6 +418,87 @@ fn create_magic_numbers(seed: u32) {
     for (square, relevant_bits) in BISHOP_RELEVANT_BITS.into_iter().enumerate() {
         let magic = find_magic_number(square, relevant_bits, SlidingPiece::Bishop, &mut rng);
         println!("{:#x},", magic);
+    }
+}
+
+// endregion
+
+// region: BitIter
+
+struct BitIter(u64);
+
+impl BitIter {
+    fn new(bits: u64) -> BitIter {
+        BitIter(bits)
+    }
+}
+
+impl Iterator for BitIter {
+    type Item = u8;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.0 == 0 {
+            return None;
+        }
+        let lsb = self.0.trailing_zeros() as u8;
+        self.0 &= self.0 - 1;
+        Some(lsb)
+    }
+}
+
+// endregion
+
+// region: Bitboards
+
+#[derive(Clone, Copy, Default)]
+pub struct Bitboards {
+    // [color][piece]
+    pieces: [[u64; 6]; 2],
+}
+
+impl Bitboards {
+    pub fn new() -> Bitboards {
+        Bitboards {
+            pieces: [
+                [
+                    0x000000000000FF00,
+                    0x0000000000000042,
+                    0x0000000000000024,
+                    0x0000000000000081,
+                    0x0000000000000008,
+                    0x0000000000000010,
+                ],
+                [
+                    0x00FF000000000000,
+                    0x4200000000000000,
+                    0x2400000000000000,
+                    0x8100000000000000,
+                    0x0800000000000000,
+                    0x1000000000000000,
+                ],
+            ],
+        }
+    }
+
+    pub fn empty() -> Bitboards {
+        Bitboards {
+            pieces: [[0u64; 6]; 2],
+        }
+    }
+
+    fn white(&self) -> u64 {
+        self.pieces[Color::White as usize]
+            .iter()
+            .fold(0, |acc, bb| acc | bb)
+    }
+
+    fn black(&self) -> u64 {
+        self.pieces[Color::Black as usize]
+            .iter()
+            .fold(0, |acc, bb| acc | bb)
+    }
+
+    fn all(&self) -> u64 {
+        self.white() | self.black()
     }
 }
 
@@ -735,63 +821,6 @@ impl AttackTables {
 
 // endregion
 
-// region: Bitboards
-
-#[derive(Clone, Copy, Default)]
-pub struct Bitboards {
-    // [color][piece]
-    pieces: [[u64; 6]; 2],
-}
-
-impl Bitboards {
-    pub fn new() -> Bitboards {
-        Bitboards {
-            pieces: [
-                [
-                    0x000000000000FF00,
-                    0x0000000000000042,
-                    0x0000000000000024,
-                    0x0000000000000081,
-                    0x0000000000000008,
-                    0x0000000000000010,
-                ],
-                [
-                    0x00FF000000000000,
-                    0x4200000000000000,
-                    0x2400000000000000,
-                    0x8100000000000000,
-                    0x0800000000000000,
-                    0x1000000000000000,
-                ],
-            ],
-        }
-    }
-
-    pub fn empty() -> Bitboards {
-        Bitboards {
-            pieces: [[0u64; 6]; 2],
-        }
-    }
-
-    fn white(&self) -> u64 {
-        self.pieces[Color::White as usize]
-            .iter()
-            .fold(0, |acc, bb| acc | bb)
-    }
-
-    fn black(&self) -> u64 {
-        self.pieces[Color::Black as usize]
-            .iter()
-            .fold(0, |acc, bb| acc | bb)
-    }
-
-    fn all(&self) -> u64 {
-        self.white() | self.black()
-    }
-}
-
-// endregion
-
 // region: Moves
 
 #[derive(Copy, Clone, PartialEq)]
@@ -806,7 +835,7 @@ pub enum MoveFlag {
     PromotionCapture,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct Move {
     pub from: u8,
     pub to: u8,
@@ -826,13 +855,14 @@ pub struct Undo {
 
 // region: Position
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct Position {
     pub bitboards: Bitboards,
     pub side_to_move: Color,
     pub castling_rights: u8, // 1 bit per thing
     pub en_passant: Option<u8>,
     pub halfmove_clock: u32,
+    pub attack_tables: AttackTables,
 }
 
 impl Position {
@@ -844,6 +874,7 @@ impl Position {
             castling_rights: 0b1111,
             en_passant: None,
             halfmove_clock: 0,
+            attack_tables: AttackTables::new(),
         }
     }
 
@@ -934,6 +965,7 @@ impl Position {
             castling_rights,
             en_passant,
             halfmove_clock,
+            attack_tables: AttackTables::new(),
         }
     }
 
@@ -1049,13 +1081,13 @@ impl Position {
         let square = square as usize;
 
         // rustfmt wtf?!?!?!?!?!??
-        if (ATTACK_TABLES.pawn_attacks[idx][square]
+        if (self.attack_tables.pawn_attacks[idx][square]
             & self.bitboards.pieces[idx][Piece::Pawn as usize])
             != 0
-            || (ATTACK_TABLES.knight_attacks[square]
+            || (self.attack_tables.knight_attacks[square]
                 & self.bitboards.pieces[idx][Piece::Knight as usize])
                 != 0
-            || (ATTACK_TABLES.king_attacks[square]
+            || (self.attack_tables.king_attacks[square]
                 & self.bitboards.pieces[idx][Piece::King as usize])
                 != 0
         {
@@ -1063,7 +1095,9 @@ impl Position {
         }
 
         // is rustfmt okay?
-        let bishop_attacks = ATTACK_TABLES.get_bishop_attacks(square, self.bitboards.all());
+        let bishop_attacks = self
+            .attack_tables
+            .get_bishop_attacks(square, self.bitboards.all());
         if bishop_attacks
             & (self.bitboards.pieces[idx][Piece::Bishop as usize]
                 | self.bitboards.pieces[idx][Piece::Queen as usize])
@@ -1073,7 +1107,9 @@ impl Position {
         }
 
         // is everything okay at home rustfmt??
-        let rook_attacks = ATTACK_TABLES.get_rook_attacks(square, self.bitboards.all());
+        let rook_attacks = self
+            .attack_tables
+            .get_rook_attacks(square, self.bitboards.all());
         if rook_attacks
             & (self.bitboards.pieces[idx][Piece::Rook as usize]
                 | self.bitboards.pieces[idx][Piece::Queen as usize])
@@ -1093,13 +1129,7 @@ impl Position {
 
         let king_sq = king_bb.trailing_zeros() as u8;
 
-        self.square_under_attack(
-            king_sq,
-            match color {
-                Color::White => Color::Black,
-                Color::Black => Color::White,
-            },
-        )
+        self.square_under_attack(king_sq, color.opposite())
     }
 
     pub fn make_move(&mut self, mv: Move) -> Undo {
@@ -1285,9 +1315,140 @@ impl Position {
         self.halfmove_clock = undo.halfmove_clock;
     }
 
-    // pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {}
+    pub fn get_pawn_moves(&self, moves: &mut Vec<Move>) {
+        let color = self.side_to_move;
+        let idx = color as usize;
+        let enemy_idx = color.opposite() as usize;
 
-    // pub fn get_legal_moves(&self) -> Vec<Move> {}
+        let our_pawns = self.bitboards.pieces[idx][Piece::Pawn as usize];
+        let enemy_occupancy = if color == Color::White {
+            self.bitboards.black()
+        } else {
+            self.bitboards.white()
+        };
+        let all_occupancy = self.bitboards.all();
+        let empty = !all_occupancy;
+
+        let single_pushes = if color == Color::White {
+            (our_pawns << 8) & empty
+        } else {
+            (our_pawns >> 8) & empty
+        };
+
+        for to in BitIter::new(single_pushes) {
+            let from = if color == Color::White {
+                to - 8
+            } else {
+                to + 8
+            };
+            let promotion_rank = if color == Color::White { 56..64 } else { 0..8 };
+
+            if promotion_rank.contains(&to) {
+                for promo in [Piece::Queen, Piece::Rook, Piece::Bishop, Piece::Knight] {
+                    moves.push(Move {
+                        from,
+                        to,
+                        promotion: Some(promo),
+                        flag: MoveFlag::Promotion,
+                    });
+                }
+            } else {
+                moves.push(Move {
+                    from,
+                    to,
+                    promotion: None,
+                    flag: MoveFlag::Quiet,
+                });
+            }
+        }
+
+        let double_push_mask = if color == Color::White {
+            0x000000000000FF00
+        } else {
+            0x00FF000000000000
+        };
+        let single_push_pawns = if color == Color::White {
+            (our_pawns & double_push_mask) << 8 & empty
+        } else {
+            (our_pawns & double_push_mask) >> 8 & empty
+        };
+        let double_pushes = if color == Color::White {
+            (single_push_pawns << 8) & empty
+        } else {
+            (single_push_pawns >> 8) & empty
+        };
+        for to in BitIter::new(double_pushes) {
+            let from = if color == Color::White {
+                to - 16
+            } else {
+                to + 16
+            };
+            moves.push(Move {
+                from,
+                to,
+                promotion: None,
+                flag: MoveFlag::DoublePawnPush,
+            });
+        }
+
+        let pawn_idx = if color == Color::White { 0 } else { 1 };
+        for from in BitIter::new(our_pawns) {
+            let attacks = self.attack_tables.pawn_attacks[pawn_idx][from as usize];
+            let captures = attacks & enemy_occupancy;
+
+            for to in BitIter::new(captures) {
+                let promotion_rank = if color == Color::White { 56..64 } else { 0..8 };
+                if promotion_rank.contains(&to) {
+                    for promo in [Piece::Queen, Piece::Rook, Piece::Bishop, Piece::Knight] {
+                        moves.push(Move {
+                            from,
+                            to,
+                            promotion: Some(promo),
+                            flag: MoveFlag::PromotionCapture,
+                        });
+                    }
+                } else {
+                    moves.push(Move {
+                        from,
+                        to,
+                        promotion: None,
+                        flag: MoveFlag::Capture,
+                    });
+                }
+            }
+        }
+
+        if let Some(ep_sq) = self.en_passant {
+            let candidates = if color == Color::White {
+                our_pawns & 0x000000FF00000000
+            } else {
+                our_pawns & 0x00000000FF000000
+            };
+            for from in BitIter::new(candidates) {
+                let attacks = self.attack_tables.pawn_attacks[pawn_idx][from as usize];
+                if attacks & (1 << ep_sq) != 0 {
+                    moves.push(Move {
+                        from,
+                        to: ep_sq,
+                        promotion: None,
+                        flag: MoveFlag::EnPassant,
+                    });
+                }
+            }
+        }
+    }
+
+    pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {
+        let mut moves = Vec::new();
+
+        self.get_pawn_moves(&mut moves);
+
+        moves
+    }
+
+    pub fn get_legal_moves(&self) -> Vec<Move> {
+        self.get_pseudo_legal_moves()
+    }
 }
 
 // endregion

@@ -192,8 +192,11 @@ fn main() {
             continue;
         };
 
-        // todo: add legal move gen
-        let undo = pos.make_move(mv);
-        history.push((mv, undo));
+        if pos.get_legal_moves().contains(&mv) {
+            let undo = pos.make_move(mv);
+            history.push((mv, undo));
+        } else {
+            println!("Illegal move!");
+        }
     }
 }
