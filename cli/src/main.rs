@@ -86,15 +86,42 @@ fn parse_uci(input: &str, gs: &GameState) -> Option<Move> {
     })
 }
 
-pub fn print_position(gs: &GameState) {
+fn print_position(gs: &GameState) {
     let pos = &gs.position;
+
+    let white_in_check = pos.is_in_check(Color::White);
+    let black_in_check = pos.is_in_check(Color::Black);
+
+    let white_king_sq = {
+        let bb = pos.bitboards.pieces[Color::White as usize][Piece::King as usize];
+        if bb != 0 {
+            Some(bb.trailing_zeros() as u8)
+        } else {
+            None
+        }
+    };
+
+    let black_king_sq = {
+        let bb = pos.bitboards.pieces[Color::Black as usize][Piece::King as usize];
+        if bb != 0 {
+            Some(bb.trailing_zeros() as u8)
+        } else {
+            None
+        }
+    };
+
+    const ANSI_RESET: &str = "\x1b[0m";
+    const ANSI_CHECK_BG: &str = "\x1b[41m";
+    const ANSI_CHECK_FG: &str = "\x1b[97m";
+
     println!("  +------------------------+");
     for rank in (0..8).rev() {
         print!("{} |", rank + 1);
         for file in 0..8 {
-            let sq = rank * 8 + file;
-            let ch = if let Some((color, piece)) = pos.piece_on(sq) {
-                match (color, piece) {
+            let sq = (rank * 8 + file) as u8;
+
+            if let Some((color, piece)) = pos.piece_on(sq) {
+                let ch = match (color, piece) {
                     (Color::White, Piece::Pawn) => 'P',
                     (Color::White, Piece::Knight) => 'N',
                     (Color::White, Piece::Bishop) => 'B',
@@ -107,11 +134,21 @@ pub fn print_position(gs: &GameState) {
                     (Color::Black, Piece::Rook) => 'r',
                     (Color::Black, Piece::Queen) => 'q',
                     (Color::Black, Piece::King) => 'k',
+                };
+
+                let highlight = match color {
+                    Color::White => white_in_check && white_king_sq == Some(sq),
+                    Color::Black => black_in_check && black_king_sq == Some(sq),
+                };
+
+                if highlight {
+                    print!(" {}{}{}{} ", ANSI_CHECK_BG, ANSI_CHECK_FG, ch, ANSI_RESET);
+                } else {
+                    print!(" {} ", ch);
                 }
             } else {
-                '.'
-            };
-            print!(" {} ", ch);
+                print!(" . ");
+            }
         }
         println!("|");
     }

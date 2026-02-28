@@ -452,7 +452,7 @@ impl Iterator for BitIter {
 #[derive(Clone, Copy, Default)]
 pub struct Bitboards {
     // [color][piece]
-    pieces: [[u64; 6]; 2],
+    pub pieces: [[u64; 6]; 2],
 }
 
 impl Bitboards {
@@ -1931,9 +1931,8 @@ impl GameState {
             return Err("Game already finished");
         }
 
-        let legal = self.position.get_legal_moves();
-
-        if !legal.contains(&mv) {
+        let legal_before = self.position.get_legal_moves();
+        if !legal_before.contains(&mv) {
             return Err("Illegal Move");
         }
 
@@ -1941,7 +1940,9 @@ impl GameState {
         self.history.push((mv, undo));
 
         self.update_repetition();
-        self.update_game_result(&legal);
+
+        let legal_after = self.position.get_legal_moves();
+        self.update_game_result(&legal_after);
 
         Ok(())
     }
