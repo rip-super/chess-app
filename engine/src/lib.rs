@@ -1170,27 +1170,32 @@ impl Position {
     }
 
     pub fn square_under_attack(&self, square: u8, by_color: Color) -> bool {
-        let idx = by_color as usize;
-        let square = square as usize;
+        let sq = square as usize;
+        let color_idx = by_color.opposite() as usize;
+        let board_idx = by_color as usize;
 
-        // rustfmt wtf?!?!?!?!?!??
-        if (self.attack_tables.pawn_attacks[idx][square]
-            & self.bitboards.pieces[idx][Piece::Pawn as usize])
+        if (self.attack_tables.pawn_attacks[color_idx][sq]
+            & self.bitboards.pieces[board_idx][Piece::Pawn as usize])
             != 0
-            || (self.attack_tables.knight_attacks[square]
-                & self.bitboards.pieces[idx][Piece::Knight as usize])
-                != 0
-            || (self.attack_tables.king_attacks[square]
+        {
+            return true;
+        }
+
+        let idx = by_color as usize;
+
+        if (self.attack_tables.knight_attacks[sq]
+            & self.bitboards.pieces[idx][Piece::Knight as usize])
+            != 0
+            || (self.attack_tables.king_attacks[sq]
                 & self.bitboards.pieces[idx][Piece::King as usize])
                 != 0
         {
             return true;
         }
 
-        // is rustfmt okay?
-        let bishop_attacks = self
-            .attack_tables
-            .get_bishop_attacks(square, self.bitboards.all());
+        let occ = self.bitboards.all();
+
+        let bishop_attacks = self.attack_tables.get_bishop_attacks(sq, occ);
         if bishop_attacks
             & (self.bitboards.pieces[idx][Piece::Bishop as usize]
                 | self.bitboards.pieces[idx][Piece::Queen as usize])
@@ -1199,10 +1204,7 @@ impl Position {
             return true;
         }
 
-        // is everything okay at home rustfmt??
-        let rook_attacks = self
-            .attack_tables
-            .get_rook_attacks(square, self.bitboards.all());
+        let rook_attacks = self.attack_tables.get_rook_attacks(sq, occ);
         if rook_attacks
             & (self.bitboards.pieces[idx][Piece::Rook as usize]
                 | self.bitboards.pieces[idx][Piece::Queen as usize])
@@ -2080,4 +2082,4 @@ mod tests {
     }
 }
 
-// endrgion
+// endregion
