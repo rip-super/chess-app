@@ -1438,6 +1438,69 @@ impl Position {
         }
     }
 
+    pub fn get_castle_moves(&self, moves: &mut Vec<Move>) {
+        let rank = if self.side_to_move == Color::White {
+            0
+        } else {
+            7
+        };
+        let enemy_color = self.side_to_move.opposite();
+
+        if self.is_in_check(self.side_to_move) {
+            return;
+        }
+
+        let king_side_mask = if self.side_to_move == Color::White {
+            0b0001
+        } else {
+            0b0100
+        };
+        if self.castling_rights & king_side_mask != 0 {
+            let f = rank * 8 + 5;
+            let g = rank * 8 + 6;
+            let e = rank * 8 + 4;
+
+            if self.piece_on(f as u8).is_none()
+                && self.piece_on(g as u8).is_none()
+                && !self.square_under_attack(f as u8, enemy_color)
+                && !self.square_under_attack(g as u8, enemy_color)
+            {
+                moves.push(Move {
+                    from: e as u8,
+                    to: g as u8,
+                    promotion: None,
+                    flag: MoveFlag::KingCastle,
+                });
+            }
+        }
+
+        let queen_side_mask = if self.side_to_move == Color::White {
+            0b0010
+        } else {
+            0b1000
+        };
+        if self.castling_rights & queen_side_mask != 0 {
+            let d = rank * 8 + 3;
+            let c = rank * 8 + 2;
+            let b = rank * 8 + 1;
+            let e = rank * 8 + 4;
+
+            if self.piece_on(d as u8).is_none()
+                && self.piece_on(c as u8).is_none()
+                && self.piece_on(b as u8).is_none()
+                && !self.square_under_attack(d as u8, enemy_color)
+                && !self.square_under_attack(c as u8, enemy_color)
+            {
+                moves.push(Move {
+                    from: e as u8,
+                    to: c as u8,
+                    promotion: None,
+                    flag: MoveFlag::QueenCastle,
+                });
+            }
+        }
+    }
+
     pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {
         let mut moves = Vec::new();
         let color = self.side_to_move;
@@ -1553,8 +1616,7 @@ impl Position {
             }
         }
 
-        // todo: castle moves
-        // self.get_castle_moves(&mut moves);
+        self.get_castle_moves(&mut moves);
 
         moves
     }
