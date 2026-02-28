@@ -1,4 +1,95 @@
 use engine::*;
+use std::io::{self, Write};
+
+fn parse_uci(input: &str, pos: &Position) -> Option<Move> {
+    if input.len() < 4 {
+        return None;
+    }
+
+    let bytes = input.as_bytes();
+
+    let file_from = bytes[0].wrapping_sub(b'a');
+    let rank_from = bytes[1].wrapping_sub(b'1');
+    let file_to = bytes[2].wrapping_sub(b'a');
+    let rank_to = bytes[3].wrapping_sub(b'1');
+
+    if file_from > 7 || file_to > 7 || rank_from > 7 || rank_to > 7 {
+        return None;
+    }
+
+    let from = rank_from * 8 + file_from;
+    let to = rank_to * 8 + file_to;
+
+    let (color, piece) = pos.piece_on(from)?;
+    if color != pos.side_to_move {
+        return None;
+    }
+
+    let target_piece = pos.piece_on(to);
+
+    let promotion = if input.len() == 5 {
+        match bytes[4] as char {
+            'q' => Some(Piece::Queen),
+            'r' => Some(Piece::Rook),
+            'b' => Some(Piece::Bishop),
+            'n' => Some(Piece::Knight),
+            _ => return None,
+        }
+    } else {
+        None
+    };
+
+    let mut flag = MoveFlag::Quiet;
+
+    match piece {
+        Piece::Pawn => {
+            let rank_diff = if color == Color::White {
+                rank_to as i8 - rank_from as i8
+            } else {
+                rank_from as i8 - rank_to as i8
+            };
+
+            if (color == Color::White && rank_to == 7) || (color == Color::Black && rank_to == 0) {
+                flag = if target_piece.is_some() {
+                    MoveFlag::PromotionCapture
+                } else {
+                    MoveFlag::Promotion
+                };
+            } else if Some(to) == pos.en_passant {
+                flag = MoveFlag::EnPassant;
+            } else if rank_diff == 2 {
+                flag = MoveFlag::DoublePawnPush;
+            } else if target_piece.is_some() {
+                flag = MoveFlag::Capture;
+            }
+        }
+
+        Piece::King => {
+            if (from as i8 - to as i8).abs() == 2 {
+                if file_to == 6 {
+                    flag = MoveFlag::KingCastle;
+                } else {
+                    flag = MoveFlag::QueenCastle;
+                }
+            } else if target_piece.is_some() {
+                flag = MoveFlag::Capture;
+            }
+        }
+
+        _ => {
+            if target_piece.is_some() {
+                flag = MoveFlag::Capture;
+            }
+        }
+    }
+
+    Some(Move {
+        from,
+        to,
+        promotion,
+        flag,
+    })
+}
 
 pub fn print_position(pos: &Position) {
     println!("  +------------------------+");
@@ -29,7 +120,7 @@ pub fn print_position(pos: &Position) {
         println!("|");
     }
     println!("  +------------------------+");
-    println!("   a  b  c  d  e  f  g  h");
+    println!("    a  b  c  d  e  f  g  h");
     println!("Side to move: {:?}", pos.side_to_move);
     println!(
         "Castling: {}{}{}{}",
@@ -67,20 +158,39 @@ pub fn print_position(pos: &Position) {
 }
 
 fn main() {
-    let mut pos = Position::from_fen("8/4P3/8/8/8/8/8/4kK3 w - - 0 1");
-    print_position(&pos);
+    let mut pos = Position::new();
+    let mut history: Vec<(Move, Undo)> = Vec::new(); // todo: replace w/ game state
 
-    let mv = Move {
-        from: Square::E7 as u8,
-        to: Square::E8 as u8,
-        promotion: Some(Piece::Queen),
-        flag: MoveFlag::Promotion,
-    };
+    loop {
+        print_position(&pos);
 
-    let undo = pos.make_move(mv);
+        print!("Enter move (uci, undo, quit): ");
+        io::stdout().flush().unwrap();
 
-    print_position(&pos);
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        let input = input.trim();
 
-    pos.undo_move(mv, undo);
-    print_position(&pos);
+        if input == "quit" {
+            break;
+        }
+
+        if input == "undo" {
+            if let Some((mv, undo)) = history.pop() {
+                pos.undo_move(mv, undo);
+            } else {
+                println!("No moves to undo.");
+            }
+            continue;
+        }
+
+        let Some(mv) = parse_uci(input, &pos) else {
+            println!("Invalid input.");
+            continue;
+        };
+
+        // todo: add legal move gen
+        let undo = pos.make_move(mv);
+        history.push((mv, undo));
+    }
 }
