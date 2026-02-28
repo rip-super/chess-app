@@ -1440,8 +1440,121 @@ impl Position {
 
     pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {
         let mut moves = Vec::new();
+        let color = self.side_to_move;
+        let idx = color as usize;
+        let enemy_idx = color.opposite() as usize;
+
+        let all_occupancy = self.bitboards.all();
+        let our_pieces = self.bitboards.pieces[idx]
+            .iter()
+            .fold(0, |acc, &board| acc | board);
+        let enemy_occupancy = self.bitboards.pieces[enemy_idx]
+            .iter()
+            .fold(0, |acc, &board| acc | board);
+
+        use Piece::*;
 
         self.get_pawn_moves(&mut moves);
+
+        let knights = self.bitboards.pieces[idx][Knight as usize];
+        for from in BitIter::new(knights) {
+            let attacks = self.attack_tables.knight_attacks[from as usize] & !our_pieces;
+            for to in BitIter::new(attacks) {
+                let flag = if (1 << to) & enemy_occupancy != 0 {
+                    MoveFlag::Capture
+                } else {
+                    MoveFlag::Quiet
+                };
+                moves.push(Move {
+                    from,
+                    to,
+                    promotion: None,
+                    flag,
+                });
+            }
+        }
+
+        let bishops = self.bitboards.pieces[idx][Bishop as usize];
+        for from in BitIter::new(bishops) {
+            let attacks = self
+                .attack_tables
+                .get_bishop_attacks(from as usize, all_occupancy)
+                & !our_pieces;
+            for to in BitIter::new(attacks) {
+                let flag = if (1 << to) & enemy_occupancy != 0 {
+                    MoveFlag::Capture
+                } else {
+                    MoveFlag::Quiet
+                };
+                moves.push(Move {
+                    from,
+                    to,
+                    promotion: None,
+                    flag,
+                });
+            }
+        }
+
+        let rooks = self.bitboards.pieces[idx][Rook as usize];
+        for from in BitIter::new(rooks) {
+            let attacks = self
+                .attack_tables
+                .get_rook_attacks(from as usize, all_occupancy)
+                & !our_pieces;
+            for to in BitIter::new(attacks) {
+                let flag = if (1 << to) & enemy_occupancy != 0 {
+                    MoveFlag::Capture
+                } else {
+                    MoveFlag::Quiet
+                };
+                moves.push(Move {
+                    from,
+                    to,
+                    promotion: None,
+                    flag,
+                });
+            }
+        }
+
+        let queens = self.bitboards.pieces[idx][Queen as usize];
+        for from in BitIter::new(queens) {
+            let attacks = (self
+                .attack_tables
+                .get_bishop_attacks(from as usize, all_occupancy)
+                | self
+                    .attack_tables
+                    .get_rook_attacks(from as usize, all_occupancy))
+                & !our_pieces;
+            for to in BitIter::new(attacks) {
+                let flag = if (1 << to) & enemy_occupancy != 0 {
+                    MoveFlag::Capture
+                } else {
+                    MoveFlag::Quiet
+                };
+                moves.push(Move {
+                    from,
+                    to,
+                    promotion: None,
+                    flag,
+                });
+            }
+        }
+
+        let king = self.bitboards.pieces[idx][King as usize];
+        for from in BitIter::new(king) {
+            let attacks = self.attack_tables.king_attacks[from as usize] & !our_pieces;
+            for to in BitIter::new(attacks) {
+                moves.push(Move {
+                    from,
+                    to,
+                    promotion: None,
+                    flag: MoveFlag::Quiet,
+                });
+            }
+        }
+
+        // todo: castle moves
+        // self.get_castle_moves(&mut moves);
 
         moves
     }
