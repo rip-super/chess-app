@@ -1962,3 +1962,122 @@ impl GameState {
 }
 
 // endregion
+
+// region: Perft
+
+fn perft(gs: &mut GameState, depth: u32) -> u64 {
+    if depth == 0 {
+        return 1;
+    }
+
+    let moves = gs.position.get_legal_moves();
+
+    if depth == 1 {
+        return moves.len() as u64;
+    }
+
+    let mut nodes = 0;
+
+    for mv in moves {
+        gs.make_move(mv);
+        nodes += perft(gs, depth - 1);
+        gs.undo_move();
+    }
+
+    nodes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod perft {
+        use super::*;
+
+        #[test]
+        fn perft_depth_0() {
+            let mut gs = GameState::new();
+            let actual = perft(&mut gs, 0);
+            let expected = 1;
+            assert_eq!(
+                actual, expected,
+                "Perft(0): expected {}, got {}",
+                expected, actual
+            );
+        }
+
+        #[test]
+        fn perft_depth_1() {
+            let mut gs = GameState::new();
+            let actual = perft(&mut gs, 1);
+            let expected = 20;
+            assert_eq!(
+                actual, expected,
+                "Perft(1): expected {}, got {}",
+                expected, actual
+            );
+        }
+
+        #[test]
+        fn perft_depth_2() {
+            let mut gs = GameState::new();
+            let actual = perft(&mut gs, 2);
+            let expected = 400;
+            assert_eq!(
+                actual, expected,
+                "Perft(2): expected {}, got {}",
+                expected, actual
+            );
+        }
+
+        #[test]
+        fn perft_depth_3() {
+            let mut gs = GameState::new();
+            let actual = perft(&mut gs, 3);
+            let expected = 8902;
+            assert_eq!(
+                actual, expected,
+                "Perft(3): expected {}, got {}",
+                expected, actual
+            );
+        }
+
+        #[test]
+        fn perft_depth_4() {
+            let mut gs = GameState::new();
+            let actual = perft(&mut gs, 4);
+            let expected = 197281;
+            assert_eq!(
+                actual, expected,
+                "Perft(4): expected {}, got {}",
+                expected, actual
+            );
+        }
+
+        #[test]
+        fn perft_depth_5() {
+            let mut gs = GameState::new();
+            let actual = perft(&mut gs, 5);
+            let expected = 4865609;
+            assert_eq!(
+                actual, expected,
+                "Perft(5): expected {}, got {}",
+                expected, actual
+            );
+        }
+
+        #[test]
+        fn perft_depth_6() {
+            let mut gs = GameState::new();
+            let actual = perft(&mut gs, 6);
+            let expected = 119060324;
+            assert_eq!(
+                actual, expected,
+                "Perft(6): expected {}, got {}",
+                expected, actual
+            );
+        }
+    }
+}
+
+// endrgion
