@@ -404,7 +404,6 @@ fn create_magic_numbers(seed: u32) {
 // endregion
 
 // region: BitIter
-
 struct BitIter(u64);
 
 impl BitIter {
@@ -429,15 +428,19 @@ impl Iterator for BitIter {
 
 // region: Bitboards
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 pub struct Bitboards {
     // [color][piece]
     pub pieces: [[u64; 6]; 2],
+    color: [u64; 2],
+    all: u64,
+    mailbox: [Option<(u8, u8)>; 64],
 }
 
 impl Bitboards {
-    pub fn new() -> Bitboards {
-        Bitboards {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        let mut bb = Bitboards {
             pieces: [
                 [
                     0x000000000000FF00,
@@ -456,29 +459,57 @@ impl Bitboards {
                     0x1000000000000000,
                 ],
             ],
-        }
+            color: [0; 2],
+            all: 0,
+            mailbox: [None; 64],
+        };
+        bb.recompute();
+        bb
     }
 
-    pub fn empty() -> Bitboards {
+    pub fn empty() -> Self {
         Bitboards {
             pieces: [[0u64; 6]; 2],
+            color: [0; 2],
+            all: 0,
+            mailbox: [None; 64],
         }
     }
 
-    fn white(&self) -> u64 {
-        self.pieces[Color::White as usize]
-            .iter()
-            .fold(0, |acc, bb| acc | bb)
+    pub fn recompute(&mut self) {
+        self.color[0] = self.pieces[0].iter().fold(0, |a, b| a | b);
+        self.color[1] = self.pieces[1].iter().fold(0, |a, b| a | b);
+        self.all = self.color[0] | self.color[1];
+
+        self.mailbox = [None; 64];
+        for c in 0..2usize {
+            for p in 0..6usize {
+                let mut bb = self.pieces[c][p];
+                while bb != 0 {
+                    let sq = bb.trailing_zeros() as u8;
+                    self.mailbox[sq as usize] = Some((c as u8, p as u8));
+                    bb &= bb - 1;
+                }
+            }
+        }
     }
 
-    fn black(&self) -> u64 {
-        self.pieces[Color::Black as usize]
-            .iter()
-            .fold(0, |acc, bb| acc | bb)
+    #[inline(always)]
+    pub fn set_piece(&mut self, color: usize, piece: usize, sq: u8) {
+        let mask = 1u64 << sq;
+        self.pieces[color][piece] |= mask;
+        self.color[color] |= mask;
+        self.all |= mask;
+        self.mailbox[sq as usize] = Some((color as u8, piece as u8));
     }
 
-    fn all(&self) -> u64 {
-        self.white() | self.black()
+    #[inline(always)]
+    pub fn clear_piece(&mut self, color: usize, piece: usize, sq: u8) {
+        let mask = 1u64 << sq;
+        self.pieces[color][piece] &= !mask;
+        self.color[color] &= !mask;
+        self.all &= !mask;
+        self.mailbox[sq as usize] = None;
     }
 }
 
@@ -825,11 +856,12 @@ pub struct Move {
 
 #[derive(Copy, Clone)]
 pub struct Undo {
-    pub captured: Option<Piece>,
-    pub castling_rights: u8,
-    pub en_passant: Option<u8>,
-    pub halfmove_clock: u32,
-    pub fullmove_count: u32,
+    moved_piece: Piece,
+    captured: Option<Piece>,
+    castling_rights: u8,
+    en_passant: Option<u8>,
+    halfmove_clock: u32,
+    fullmove_count: u32,
 }
 
 // endregion
@@ -889,10 +921,10 @@ pub struct Position {
     pub side_to_move: Color,
     pub castling_rights: u8, // 1 bit per thing
     pub en_passant: Option<u8>,
-    pub halfmove_clock: u32,
-    pub fullmove_count: u32,
-    pub attack_tables: AttackTables,
-    pub zobrist_keys: ZobristKeys,
+    halfmove_clock: u32,
+    fullmove_count: u32,
+    attack_tables: AttackTables,
+    zobrist_keys: ZobristKeys,
 }
 
 impl Position {
@@ -964,6 +996,8 @@ impl Position {
             bitboards.pieces[Color::Black as usize][Piece::King as usize] != 0,
             "No black king"
         );
+
+        bitboards.recompute();
 
         let side_to_move = match active_color {
             "w" => Color::White,
@@ -1087,7 +1121,7 @@ impl Position {
         fen
     }
 
-    pub fn zobrist_hash(&self) -> u64 {
+    fn zobrist_hash(&self) -> u64 {
         let mut hash = 0;
 
         for color in 0..2 {
@@ -1127,29 +1161,21 @@ impl Position {
     }
 
     pub fn piece_on(&self, square: u8) -> Option<(Color, Piece)> {
-        let mask = 1 << square;
-
-        for color in [Color::White, Color::Black] {
-            for piece in [
-                Piece::Pawn,
-                Piece::Knight,
-                Piece::Bishop,
-                Piece::Rook,
-                Piece::Queen,
-                Piece::King,
-            ] {
-                let board = self.bitboards.pieces[color as usize][piece as usize];
-
-                if board & mask != 0 {
-                    return Some((color, piece));
-                }
-            }
-        }
-
-        None
+        self.bitboards.mailbox[square as usize].map(|(c, p)| {
+            let color = if c == 0 { Color::White } else { Color::Black };
+            let piece = match p {
+                0 => Piece::Pawn,
+                1 => Piece::Knight,
+                2 => Piece::Bishop,
+                3 => Piece::Rook,
+                4 => Piece::Queen,
+                _ => Piece::King,
+            };
+            (color, piece)
+        })
     }
 
-    pub fn square_under_attack(&self, square: u8, by_color: Color) -> bool {
+    fn square_under_attack(&self, square: u8, by_color: Color) -> bool {
         let sq = square as usize;
         let color_idx = by_color.opposite() as usize;
         let board_idx = by_color as usize;
@@ -1173,7 +1199,7 @@ impl Position {
             return true;
         }
 
-        let occ = self.bitboards.all();
+        let occ = self.bitboards.all;
 
         let bishop_attacks = self.attack_tables.get_bishop_attacks(sq, occ);
         if bishop_attacks
@@ -1209,8 +1235,10 @@ impl Position {
 
     pub fn make_move(&mut self, mv: Move) -> Undo {
         let moved_piece = self.piece_on(mv.from).expect("No piece on from-square").1;
+        let color_idx = self.side_to_move as usize;
 
         let undo = Undo {
+            moved_piece,
             captured: self.piece_on(mv.to).map(|(_, piece)| piece),
             castling_rights: self.castling_rights,
             en_passant: self.en_passant,
@@ -1231,38 +1259,11 @@ impl Position {
             self.halfmove_clock += 1;
         }
 
-        if mv.flag == MoveFlag::EnPassant {
-            let cap_sq = if self.side_to_move == Color::White {
-                mv.to - 8
-            } else {
-                mv.to + 8
-            };
-            let captured_color = self.side_to_move.opposite() as usize;
-            self.bitboards.pieces[captured_color][Piece::Pawn as usize] &= !(1u64 << cap_sq);
-        }
-
-        let color_idx = self.side_to_move as usize;
-        let piece_idx = moved_piece as usize;
-
-        match mv.flag {
-            MoveFlag::Promotion | MoveFlag::PromotionCapture => {
-                let promo_idx = mv
-                    .promotion
-                    .expect("Promotion move missing promotion piece")
-                    as usize;
-                self.bitboards.pieces[color_idx][Piece::Pawn as usize] &= !(1u64 << mv.from);
-                self.bitboards.pieces[color_idx][promo_idx] |= 1u64 << mv.to;
-            }
-            _ => {
-                self.bitboards.pieces[color_idx][piece_idx] &= !(1u64 << mv.from);
-                self.bitboards.pieces[color_idx][piece_idx] |= 1u64 << mv.to;
-            }
-        }
-
         if let Some(captured) = undo.captured {
             if mv.flag != MoveFlag::EnPassant {
                 let captured_color_idx = 1 - color_idx;
-                self.bitboards.pieces[captured_color_idx][captured as usize] &= !(1u64 << mv.to);
+                self.bitboards
+                    .clear_piece(captured_color_idx, captured as usize, mv.to);
             }
         }
 
@@ -1277,25 +1278,52 @@ impl Position {
         }
 
         match mv.flag {
+            MoveFlag::Promotion | MoveFlag::PromotionCapture => {
+                let promo_idx = mv.promotion.expect("Promotion move missing piece") as usize;
+                self.bitboards
+                    .clear_piece(color_idx, Piece::Pawn as usize, mv.from);
+                self.bitboards.set_piece(color_idx, promo_idx, mv.to);
+            }
+            _ => {
+                self.bitboards
+                    .clear_piece(color_idx, moved_piece as usize, mv.from);
+                self.bitboards
+                    .set_piece(color_idx, moved_piece as usize, mv.to);
+            }
+        }
+
+        if mv.flag == MoveFlag::EnPassant {
+            let cap_sq = if self.side_to_move == Color::White {
+                mv.to - 8
+            } else {
+                mv.to + 8
+            };
+            self.bitboards
+                .clear_piece(1 - color_idx, Piece::Pawn as usize, cap_sq);
+        }
+
+        match mv.flag {
             MoveFlag::KingCastle => {
                 let (rook_from, rook_to) = if self.side_to_move == Color::White {
-                    (7, 5)
+                    (7u8, 5u8)
                 } else {
-                    (63, 61)
+                    (63u8, 61u8)
                 };
-                let rook_idx = Piece::Rook as usize;
-                self.bitboards.pieces[color_idx][rook_idx] &= !(1u64 << rook_from);
-                self.bitboards.pieces[color_idx][rook_idx] |= 1u64 << rook_to;
+                self.bitboards
+                    .clear_piece(color_idx, Piece::Rook as usize, rook_from);
+                self.bitboards
+                    .set_piece(color_idx, Piece::Rook as usize, rook_to);
             }
             MoveFlag::QueenCastle => {
                 let (rook_from, rook_to) = if self.side_to_move == Color::White {
-                    (0, 3)
+                    (0u8, 3u8)
                 } else {
-                    (56, 59)
+                    (56u8, 59u8)
                 };
-                let rook_idx = Piece::Rook as usize;
-                self.bitboards.pieces[color_idx][rook_idx] &= !(1u64 << rook_from);
-                self.bitboards.pieces[color_idx][rook_idx] |= 1u64 << rook_to;
+                self.bitboards
+                    .clear_piece(color_idx, Piece::Rook as usize, rook_from);
+                self.bitboards
+                    .set_piece(color_idx, Piece::Rook as usize, rook_to);
             }
             _ => {}
         }
@@ -1348,29 +1376,29 @@ impl Position {
     }
 
     pub fn undo_move(&mut self, mv: Move, undo: Undo) {
-        self.side_to_move = match self.side_to_move {
-            Color::White => Color::Black,
-            Color::Black => Color::White,
-        };
-
+        self.side_to_move = self.side_to_move.opposite();
         let color_idx = self.side_to_move as usize;
 
         match mv.flag {
             MoveFlag::Promotion | MoveFlag::PromotionCapture => {
                 let promo_idx = mv.promotion.unwrap() as usize;
-                self.bitboards.pieces[color_idx][Piece::Pawn as usize] |= 1u64 << mv.from;
-                self.bitboards.pieces[color_idx][promo_idx] &= !(1u64 << mv.to);
+                self.bitboards.clear_piece(color_idx, promo_idx, mv.to);
+                self.bitboards
+                    .set_piece(color_idx, Piece::Pawn as usize, mv.from);
             }
             _ => {
-                let piece_idx = self.piece_on(mv.to).unwrap().1 as usize;
-                self.bitboards.pieces[color_idx][piece_idx] |= 1u64 << mv.from;
-                self.bitboards.pieces[color_idx][piece_idx] &= !(1u64 << mv.to);
+                self.bitboards
+                    .clear_piece(color_idx, undo.moved_piece as usize, mv.to);
+                self.bitboards
+                    .set_piece(color_idx, undo.moved_piece as usize, mv.from);
             }
         }
 
         if let Some(captured) = undo.captured {
-            let captured_color = 1 - color_idx;
-            self.bitboards.pieces[captured_color][captured as usize] |= 1u64 << mv.to;
+            if mv.flag != MoveFlag::EnPassant {
+                self.bitboards
+                    .set_piece(1 - color_idx, captured as usize, mv.to);
+            }
         }
 
         if mv.flag == MoveFlag::EnPassant {
@@ -1379,30 +1407,32 @@ impl Position {
             } else {
                 mv.to + 8
             };
-            let captured_color = 1 - color_idx;
-            self.bitboards.pieces[captured_color][Piece::Pawn as usize] |= 1u64 << cap_sq;
+            self.bitboards
+                .set_piece(1 - color_idx, Piece::Pawn as usize, cap_sq);
         }
 
         match mv.flag {
             MoveFlag::KingCastle => {
                 let (rook_from, rook_to) = if self.side_to_move == Color::White {
-                    (7, 5)
+                    (7u8, 5u8)
                 } else {
-                    (63, 61)
+                    (63u8, 61u8)
                 };
-                let rook_idx = Piece::Rook as usize;
-                self.bitboards.pieces[color_idx][rook_idx] |= 1u64 << rook_from;
-                self.bitboards.pieces[color_idx][rook_idx] &= !(1u64 << rook_to);
+                self.bitboards
+                    .clear_piece(color_idx, Piece::Rook as usize, rook_to);
+                self.bitboards
+                    .set_piece(color_idx, Piece::Rook as usize, rook_from);
             }
             MoveFlag::QueenCastle => {
                 let (rook_from, rook_to) = if self.side_to_move == Color::White {
-                    (0, 3)
+                    (0u8, 3u8)
                 } else {
-                    (56, 59)
+                    (56u8, 59u8)
                 };
-                let rook_idx = Piece::Rook as usize;
-                self.bitboards.pieces[color_idx][rook_idx] |= 1u64 << rook_from;
-                self.bitboards.pieces[color_idx][rook_idx] &= !(1u64 << rook_to);
+                self.bitboards
+                    .clear_piece(color_idx, Piece::Rook as usize, rook_to);
+                self.bitboards
+                    .set_piece(color_idx, Piece::Rook as usize, rook_from);
             }
             _ => {}
         }
@@ -1412,19 +1442,14 @@ impl Position {
         self.halfmove_clock = undo.halfmove_clock;
     }
 
-    pub fn get_pawn_moves(&self, moves: &mut Vec<Move>) {
+    fn get_pawn_moves(&self, moves: &mut Vec<Move>) {
         let color = self.side_to_move;
         let idx = color as usize;
         let enemy_idx = color.opposite() as usize;
 
         let our_pawns = self.bitboards.pieces[idx][Piece::Pawn as usize];
-        let enemy_occupancy = if color == Color::White {
-            self.bitboards.black()
-        } else {
-            self.bitboards.white()
-        };
-        let all_occupancy = self.bitboards.all();
-        let empty = !all_occupancy;
+        let enemy_occupancy = self.bitboards.color[color.opposite() as usize];
+        let empty = !self.bitboards.all;
 
         let single_pushes = if color == Color::White {
             (our_pawns << 8) & empty
@@ -1535,7 +1560,7 @@ impl Position {
         }
     }
 
-    pub fn get_castle_moves(&self, moves: &mut Vec<Move>) {
+    fn get_castle_moves(&self, moves: &mut Vec<Move>) {
         let rank = if self.side_to_move == Color::White {
             0
         } else {
@@ -1612,19 +1637,15 @@ impl Position {
         }
     }
 
-    pub fn get_pseudo_legal_moves(&self) -> Vec<Move> {
+    fn get_pseudo_legal_moves(&self) -> Vec<Move> {
         let mut moves = Vec::with_capacity(80);
         let color = self.side_to_move;
         let idx = color as usize;
         let enemy_idx = color.opposite() as usize;
 
-        let all_occupancy = self.bitboards.all();
-        let our_pieces = self.bitboards.pieces[idx]
-            .iter()
-            .fold(0, |acc, &board| acc | board);
-        let enemy_occupancy = self.bitboards.pieces[enemy_idx]
-            .iter()
-            .fold(0, |acc, &board| acc | board);
+        let all_occupancy = self.bitboards.all;
+        let our_pieces = self.bitboards.color[idx];
+        let enemy_occupancy = self.bitboards.color[enemy_idx];
 
         use Piece::*;
 
@@ -1960,7 +1981,6 @@ fn perft(gs: &mut GameState, depth: u32) -> u64 {
         }
 
         let moves = pos.get_pseudo_legal_moves();
-
         let mut nodes = 0;
         let side_before = pos.side_to_move;
 
@@ -1968,7 +1988,11 @@ fn perft(gs: &mut GameState, depth: u32) -> u64 {
             let undo = pos.make_move(mv);
 
             if !pos.is_in_check(side_before) {
-                nodes += perft_pos(pos, depth - 1);
+                if depth == 1 {
+                    nodes += 1;
+                } else {
+                    nodes += perft_pos(pos, depth - 1);
+                }
             }
 
             pos.undo_move(mv, undo);
