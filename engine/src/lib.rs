@@ -254,6 +254,25 @@ impl Square {
 
 // endregion
 
+// region: Attack Tables
+
+mod tables;
+use tables::*;
+
+fn get_bishop_attacks(sq: usize, occ: u64) -> u64 {
+    let masked = occ & BISHOP_MASKS[sq];
+    let idx = masked.wrapping_mul(BISHOP_MAGICS[sq]) >> BISHOP_SHIFTS[sq];
+    BISHOP_DATA[BISHOP_OFFSETS[sq] + idx as usize]
+}
+
+fn get_rook_attacks(sq: usize, occ: u64) -> u64 {
+    let masked = occ & ROOK_MASKS[sq];
+    let idx = masked.wrapping_mul(ROOK_MAGICS[sq]) >> ROOK_SHIFTS[sq];
+    ROOK_DATA[ROOK_OFFSETS[sq] + idx as usize]
+}
+
+// endregion
+
 // region: Enums
 
 #[repr(usize)]
@@ -290,119 +309,6 @@ enum SlidingPiece {
 
 // endregion
 
-// region: Rng
-
-struct Rng {
-    state: u32,
-}
-
-impl Rng {
-    fn new(seed: u32) -> Rng {
-        Rng { state: seed }
-    }
-
-    fn next_u32(&mut self) -> u32 {
-        self.state ^= self.state << 13;
-        self.state ^= self.state >> 17;
-        self.state ^= self.state << 5;
-
-        self.state
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let n1 = (self.next_u32() as u64) & 0xFFFF;
-        let n2 = (self.next_u32() as u64) & 0xFFFF;
-        let n3 = (self.next_u32() as u64) & 0xFFFF;
-        let n4 = (self.next_u32() as u64) & 0xFFFF;
-
-        n1 | (n2 << 16) | (n3 << 32) | (n4 << 48)
-    }
-
-    fn generate_magic_number(&mut self) -> u64 {
-        self.next_u64() & self.next_u64() & self.next_u64()
-    }
-}
-
-// endregion
-
-// region: Magic
-
-fn find_magic_number(
-    square: usize,
-    relevant_bits: u32,
-    sliding_piece: SlidingPiece,
-    rng: &mut Rng,
-) -> u64 {
-    let mut occupancies = [0u64; 4096];
-    let mut attacks = [0u64; 4096];
-    let mut used_attacks = [0u64; 4096];
-
-    let attack_mask = match sliding_piece {
-        SlidingPiece::Bishop => AttackTables::mask_bishop_attacks(square),
-        SlidingPiece::Rook => AttackTables::mask_rook_attacks(square),
-    };
-
-    let occupancy_indices = 1 << relevant_bits;
-
-    for index in 0..occupancy_indices {
-        occupancies[index] = AttackTables::set_occupancy(index as u32, relevant_bits, attack_mask);
-        attacks[index] = match sliding_piece {
-            SlidingPiece::Bishop => AttackTables::bishop_attacks_fly(square, occupancies[index]),
-            SlidingPiece::Rook => AttackTables::rook_attacks_fly(square, occupancies[index]),
-        };
-    }
-
-    for _ in 0..100_000_000 {
-        let magic_number = rng.generate_magic_number();
-
-        if ((attack_mask.wrapping_mul(magic_number)) & 0xFF00000000000000).count_ones() < 6 {
-            continue;
-        }
-
-        used_attacks.fill(0);
-
-        let mut fail = false;
-
-        for index in 0..occupancy_indices {
-            let magic_index =
-                ((occupancies[index].wrapping_mul(magic_number)) >> (64 - relevant_bits)) as usize;
-
-            if used_attacks[magic_index] == 0 {
-                used_attacks[magic_index] = attacks[index];
-            } else if used_attacks[magic_index] != attacks[index] {
-                fail = true;
-                break;
-            }
-        }
-
-        if !fail {
-            return magic_number;
-        }
-    }
-
-    println!("Magic number search failed. No magic number found.");
-
-    0
-}
-
-fn create_magic_numbers(seed: u32) {
-    let mut rng = Rng::new(seed);
-
-    for (square, relevant_bits) in ROOK_RELEVANT_BITS.into_iter().enumerate() {
-        let magic = find_magic_number(square, relevant_bits, SlidingPiece::Rook, &mut rng);
-        println!("{:#x},", magic);
-    }
-
-    println!("\n");
-
-    for (square, relevant_bits) in BISHOP_RELEVANT_BITS.into_iter().enumerate() {
-        let magic = find_magic_number(square, relevant_bits, SlidingPiece::Bishop, &mut rng);
-        println!("{:#x},", magic);
-    }
-}
-
-// endregion
-
 // region: BitIter
 struct BitIter(u64);
 
@@ -422,6 +328,40 @@ impl Iterator for BitIter {
         self.0 &= self.0 - 1;
         Some(lsb)
     }
+}
+
+// endregion
+
+// region: Moves
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum MoveFlag {
+    Quiet,
+    Capture,
+    DoublePawnPush,
+    KingCastle,
+    QueenCastle,
+    EnPassant,
+    Promotion,
+    PromotionCapture,
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub struct Move {
+    pub from: u8,
+    pub to: u8,
+    pub promotion: Option<Piece>,
+    pub flag: MoveFlag,
+}
+
+#[derive(Copy, Clone)]
+pub struct Undo {
+    moved_piece: Piece,
+    captured: Option<Piece>,
+    castling_rights: u8,
+    en_passant: Option<u8>,
+    halfmove_clock: u32,
+    fullmove_count: u32,
 }
 
 // endregion
@@ -515,353 +455,37 @@ impl Bitboards {
 
 // endregion
 
-// region: Attack Tables
+// region: Rng
 
-#[derive(Clone)]
-pub struct SlidingTable {
-    mask: [u64; 64],
-    magic: [u64; 64],
-    shift: [u8; 64],
-    offset: [usize; 64],
-    data: Vec<u64>,
+struct Rng {
+    state: u32,
 }
 
-#[derive(Clone)]
-pub struct AttackTables {
-    // 0 = black, 1 = white
-    pawn_attacks: [[u64; 64]; 2],
-    knight_attacks: [u64; 64],
-    king_attacks: [u64; 64],
-
-    bishop_table: SlidingTable,
-    rook_table: SlidingTable,
-}
-
-impl AttackTables {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        let mut pawn_attacks = [[0; 64]; 2];
-        let mut knight_attacks = [0; 64];
-        let mut king_attacks = [0u64; 64];
-
-        for square in 0..64 {
-            pawn_attacks[0][square] = Self::mask_pawn_attacks(0, square);
-            pawn_attacks[1][square] = Self::mask_pawn_attacks(1, square);
-
-            knight_attacks[square] = Self::mask_knight_attacks(square);
-            king_attacks[square] = Self::mask_king_attacks(square);
-        }
-
-        let (bishop_table, rook_table) = Self::compute_sliding_attack_tables();
-
-        AttackTables {
-            pawn_attacks,
-            knight_attacks,
-            king_attacks,
-            bishop_table,
-            rook_table,
-        }
+impl Rng {
+    fn new(seed: u32) -> Rng {
+        Rng { state: seed }
     }
 
-    pub fn mask_pawn_attacks(color: u8, square: usize) -> u64 {
-        let mut attacks = 0;
-        let bitboard = 1u64 << square;
+    fn next_u32(&mut self) -> u32 {
+        self.state ^= self.state << 13;
+        self.state ^= self.state >> 17;
+        self.state ^= self.state << 5;
 
-        if color == 0 {
-            add_attack!(attacks, bitboard << 7, NOT_H_FILE);
-            add_attack!(attacks, bitboard << 9, NOT_A_FILE);
-        } else {
-            add_attack!(attacks, bitboard >> 9, NOT_H_FILE);
-            add_attack!(attacks, bitboard >> 7, NOT_A_FILE);
-        }
-
-        attacks
+        self.state
     }
 
-    pub fn mask_knight_attacks(square: usize) -> u64 {
-        let mut attacks = 0u64;
-        let bitboard = 1u64 << square;
+    fn next_u64(&mut self) -> u64 {
+        let n1 = (self.next_u32() as u64) & 0xFFFF;
+        let n2 = (self.next_u32() as u64) & 0xFFFF;
+        let n3 = (self.next_u32() as u64) & 0xFFFF;
+        let n4 = (self.next_u32() as u64) & 0xFFFF;
 
-        add_attack!(attacks, bitboard >> 17, NOT_H_FILE);
-        add_attack!(attacks, bitboard >> 15, NOT_A_FILE);
-        add_attack!(attacks, bitboard >> 10, NOT_HG_FILE);
-        add_attack!(attacks, bitboard >> 6, NOT_AB_FILE);
-
-        add_attack!(attacks, bitboard << 17, NOT_A_FILE);
-        add_attack!(attacks, bitboard << 15, NOT_H_FILE);
-        add_attack!(attacks, bitboard << 10, NOT_AB_FILE);
-        add_attack!(attacks, bitboard << 6, NOT_HG_FILE);
-
-        attacks
+        n1 | (n2 << 16) | (n3 << 32) | (n4 << 48)
     }
 
-    pub fn mask_king_attacks(square: usize) -> u64 {
-        let mut attacks = 0u64;
-        let bitboard = 1u64 << square;
-
-        add_attack!(attacks, bitboard >> 8, !0);
-        add_attack!(attacks, bitboard >> 9, NOT_H_FILE);
-        add_attack!(attacks, bitboard >> 7, NOT_A_FILE);
-        add_attack!(attacks, bitboard >> 1, NOT_H_FILE);
-        add_attack!(attacks, bitboard << 8, !0);
-        add_attack!(attacks, bitboard << 9, NOT_A_FILE);
-        add_attack!(attacks, bitboard << 7, NOT_H_FILE);
-        add_attack!(attacks, bitboard << 1, NOT_A_FILE);
-
-        attacks
+    fn generate_magic_number(&mut self) -> u64 {
+        self.next_u64() & self.next_u64() & self.next_u64()
     }
-
-    pub fn mask_bishop_attacks(square: usize) -> u64 {
-        let mut attacks = 0u64;
-
-        let rank = (square / 8) as i32;
-        let file = (square % 8) as i32;
-
-        const DIRECTIONS: [(i32, i32); 4] = [(1, 1), (-1, 1), (1, -1), (-1, -1)];
-
-        for (dr, df) in DIRECTIONS {
-            let mut r = rank + dr;
-            let mut f = file + df;
-
-            while (1..=6).contains(&r) && (1..=6).contains(&f) {
-                attacks |= 1u64 << (r * 8 + f);
-                r += dr;
-                f += df;
-            }
-        }
-
-        attacks
-    }
-
-    pub fn mask_rook_attacks(square: usize) -> u64 {
-        let mut attacks = 0u64;
-
-        let rank = (square / 8) as i32;
-        let file = (square % 8) as i32;
-
-        for r in (rank + 1)..=6 {
-            attacks |= 1u64 << (r * 8 + file);
-        }
-
-        for r in (1..rank).rev() {
-            attacks |= 1u64 << (r * 8 + file);
-        }
-
-        for f in (file + 1)..=6 {
-            attacks |= 1u64 << (rank * 8 + f);
-        }
-
-        for f in (1..file).rev() {
-            attacks |= 1u64 << (rank * 8 + f);
-        }
-
-        attacks
-    }
-
-    pub fn bishop_attacks_fly(square: usize, occupancy: u64) -> u64 {
-        let mut attack_mask = 0u64;
-
-        let rank = (square / 8) as i32;
-        let file = (square % 8) as i32;
-
-        let directions = [(1, 1), (-1, 1), (1, -1), (-1, -1)];
-
-        for &(dr, df) in &directions {
-            let mut r = rank + dr;
-            let mut f = file + df;
-
-            while (0..=7).contains(&r) && (0..=7).contains(&f) {
-                let target_square = (r * 8 + f) as u8;
-                let target_mask = 1u64 << target_square;
-
-                attack_mask |= target_mask;
-
-                if target_mask & occupancy != 0 {
-                    break;
-                }
-
-                r += dr;
-                f += df;
-            }
-        }
-
-        attack_mask
-    }
-
-    pub fn rook_attacks_fly(square: usize, occupancy: u64) -> u64 {
-        let mut attack_mask = 0u64;
-
-        let rank = (square / 8) as i32;
-        let file = (square % 8) as i32;
-
-        let directions = [(1, 0), (-1, 0), (0, 1), (0, -1)];
-
-        for &(rank_delta, file_delta) in &directions {
-            let mut r = rank + rank_delta;
-            let mut f = file + file_delta;
-
-            while (0..=7).contains(&r) && (0..=7).contains(&f) {
-                let target_square = (r * 8 + f) as u8;
-                let target_mask = 1u64 << target_square;
-
-                attack_mask |= target_mask;
-
-                if target_mask & occupancy != 0 {
-                    break;
-                }
-
-                r += rank_delta;
-                f += file_delta;
-            }
-        }
-
-        attack_mask
-    }
-
-    pub fn set_occupancy(index: u32, bits_in_mask: u32, mut attack_mask: u64) -> u64 {
-        let mut occupancy = 0;
-
-        for count in 0..bits_in_mask {
-            let square = attack_mask.trailing_zeros();
-
-            attack_mask &= !(1 << (square));
-
-            if index & (1 << count) != 0 {
-                occupancy |= (1 << square);
-            }
-        }
-
-        occupancy
-    }
-
-    pub fn compute_sliding_attack_tables() -> (SlidingTable, SlidingTable) {
-        let mut bishop_masks = [0u64; 64];
-        let mut bishop_magic = [0u64; 64];
-        let mut bishop_shift = [0u8; 64];
-        let mut bishop_offset = [0usize; 64];
-
-        let mut rook_masks = [0u64; 64];
-        let mut rook_magic = [0u64; 64];
-        let mut rook_shift = [0u8; 64];
-        let mut rook_offset = [0usize; 64];
-
-        let total_bishop_entries: usize = BISHOP_RELEVANT_BITS.iter().map(|&bits| 1 << bits).sum();
-
-        let total_rook_entries: usize = ROOK_RELEVANT_BITS.iter().map(|&bits| 1 << bits).sum();
-
-        let mut bishop_data = Vec::with_capacity(total_bishop_entries);
-        let mut rook_data = Vec::with_capacity(total_rook_entries);
-
-        let mut bishop_current_offset = 0;
-        let mut rook_current_offset = 0;
-
-        for square in 0..64 {
-            bishop_masks[square] = Self::mask_bishop_attacks(square);
-            rook_masks[square] = Self::mask_rook_attacks(square);
-
-            bishop_magic[square] = BISHOP_MAGIC_NUMBERS[square];
-            bishop_shift[square] = (64 - BISHOP_RELEVANT_BITS[square]) as u8;
-
-            rook_magic[square] = ROOK_MAGIC_NUMBERS[square];
-            rook_shift[square] = (64 - ROOK_RELEVANT_BITS[square]) as u8;
-
-            let bishop_bits = BISHOP_RELEVANT_BITS[square] as usize;
-            let bishop_entries = 1 << bishop_bits;
-            bishop_offset[square] = bishop_current_offset;
-            bishop_current_offset += bishop_entries;
-            bishop_data.resize(bishop_current_offset, 0);
-
-            for index in 0..bishop_entries {
-                let occupancy =
-                    Self::set_occupancy(index as u32, bishop_bits as u32, bishop_masks[square]);
-                let magic_index = ((occupancy.wrapping_mul(bishop_magic[square]))
-                    >> bishop_shift[square]) as usize;
-                bishop_data[bishop_offset[square] + magic_index] =
-                    Self::bishop_attacks_fly(square, occupancy);
-            }
-
-            let rook_bits = ROOK_RELEVANT_BITS[square] as usize;
-            let rook_entries = 1 << rook_bits;
-            rook_offset[square] = rook_current_offset;
-            rook_current_offset += rook_entries;
-            rook_data.resize(rook_current_offset, 0);
-
-            for index in 0..rook_entries {
-                let occupancy =
-                    Self::set_occupancy(index as u32, rook_bits as u32, rook_masks[square]);
-                let magic_index =
-                    ((occupancy.wrapping_mul(rook_magic[square])) >> rook_shift[square]) as usize;
-                rook_data[rook_offset[square] + magic_index] =
-                    Self::rook_attacks_fly(square, occupancy);
-            }
-        }
-
-        let bishop_table = SlidingTable {
-            mask: bishop_masks,
-            magic: bishop_magic,
-            shift: bishop_shift,
-            offset: bishop_offset,
-            data: bishop_data,
-        };
-
-        let rook_table = SlidingTable {
-            mask: rook_masks,
-            magic: rook_magic,
-            shift: rook_shift,
-            offset: rook_offset,
-            data: rook_data,
-        };
-
-        (bishop_table, rook_table)
-    }
-
-    pub fn get_bishop_attacks(&self, square: usize, occupancy: u64) -> u64 {
-        let occ = occupancy & self.bishop_table.mask[square];
-        let index = ((occ.wrapping_mul(self.bishop_table.magic[square]))
-            >> self.bishop_table.shift[square]) as usize;
-        self.bishop_table.data[self.bishop_table.offset[square] + index]
-    }
-
-    pub fn get_rook_attacks(&self, square: usize, occupancy: u64) -> u64 {
-        let occ = occupancy & self.rook_table.mask[square];
-        let index = ((occ.wrapping_mul(self.rook_table.magic[square]))
-            >> self.rook_table.shift[square]) as usize;
-        self.rook_table.data[self.rook_table.offset[square] + index]
-    }
-}
-
-// endregion
-
-// region: Moves
-
-#[derive(Copy, Clone, PartialEq)]
-pub enum MoveFlag {
-    Quiet,
-    Capture,
-    DoublePawnPush,
-    KingCastle,
-    QueenCastle,
-    EnPassant,
-    Promotion,
-    PromotionCapture,
-}
-
-#[derive(Copy, Clone, PartialEq)]
-pub struct Move {
-    pub from: u8,
-    pub to: u8,
-    pub promotion: Option<Piece>,
-    pub flag: MoveFlag,
-}
-
-#[derive(Copy, Clone)]
-pub struct Undo {
-    moved_piece: Piece,
-    captured: Option<Piece>,
-    castling_rights: u8,
-    en_passant: Option<u8>,
-    halfmove_clock: u32,
-    fullmove_count: u32,
 }
 
 // endregion
@@ -923,7 +547,6 @@ pub struct Position {
     pub en_passant: Option<u8>,
     halfmove_clock: u32,
     fullmove_count: u32,
-    attack_tables: AttackTables,
     zobrist_keys: ZobristKeys,
 }
 
@@ -937,7 +560,6 @@ impl Position {
             en_passant: None,
             halfmove_clock: 0,
             fullmove_count: 1,
-            attack_tables: AttackTables::new(),
             zobrist_keys: ZobristKeys::new(),
         }
     }
@@ -1033,7 +655,6 @@ impl Position {
             en_passant,
             halfmove_clock,
             fullmove_count,
-            attack_tables: AttackTables::new(),
             zobrist_keys: ZobristKeys::new(),
         }
     }
@@ -1180,8 +801,7 @@ impl Position {
         let color_idx = by_color.opposite() as usize;
         let board_idx = by_color as usize;
 
-        if (self.attack_tables.pawn_attacks[color_idx][sq]
-            & self.bitboards.pieces[board_idx][Piece::Pawn as usize])
+        if (PAWN_ATTACKS[color_idx][sq] & self.bitboards.pieces[board_idx][Piece::Pawn as usize])
             != 0
         {
             return true;
@@ -1189,19 +809,15 @@ impl Position {
 
         let idx = by_color as usize;
 
-        if (self.attack_tables.knight_attacks[sq]
-            & self.bitboards.pieces[idx][Piece::Knight as usize])
-            != 0
-            || (self.attack_tables.king_attacks[sq]
-                & self.bitboards.pieces[idx][Piece::King as usize])
-                != 0
+        if (KNIGHT_ATTACKS[sq] & self.bitboards.pieces[idx][Piece::Knight as usize]) != 0
+            || (KING_ATTACKS[sq] & self.bitboards.pieces[idx][Piece::King as usize]) != 0
         {
             return true;
         }
 
         let occ = self.bitboards.all;
 
-        let bishop_attacks = self.attack_tables.get_bishop_attacks(sq, occ);
+        let bishop_attacks = get_bishop_attacks(sq, occ);
         if bishop_attacks
             & (self.bitboards.pieces[idx][Piece::Bishop as usize]
                 | self.bitboards.pieces[idx][Piece::Queen as usize])
@@ -1210,7 +826,7 @@ impl Position {
             return true;
         }
 
-        let rook_attacks = self.attack_tables.get_rook_attacks(sq, occ);
+        let rook_attacks = get_rook_attacks(sq, occ);
         if rook_attacks
             & (self.bitboards.pieces[idx][Piece::Rook as usize]
                 | self.bitboards.pieces[idx][Piece::Queen as usize])
@@ -1515,7 +1131,7 @@ impl Position {
 
         let pawn_idx = if color == Color::White { 0 } else { 1 };
         for from in BitIter::new(our_pawns) {
-            let attacks = self.attack_tables.pawn_attacks[pawn_idx][from as usize];
+            let attacks = PAWN_ATTACKS[pawn_idx][from as usize];
             let captures = attacks & enemy_occupancy;
 
             for to in BitIter::new(captures) {
@@ -1547,7 +1163,7 @@ impl Position {
                 our_pawns & 0x00000000FF000000
             };
             for from in BitIter::new(candidates) {
-                let attacks = self.attack_tables.pawn_attacks[pawn_idx][from as usize];
+                let attacks = PAWN_ATTACKS[pawn_idx][from as usize];
                 if attacks & (1 << ep_sq) != 0 {
                     moves.push(Move {
                         from,
@@ -1653,7 +1269,7 @@ impl Position {
 
         let knights = self.bitboards.pieces[idx][Knight as usize];
         for from in BitIter::new(knights) {
-            let attacks = self.attack_tables.knight_attacks[from as usize] & !our_pieces;
+            let attacks = KNIGHT_ATTACKS[from as usize] & !our_pieces;
             for to in BitIter::new(attacks) {
                 let flag = if (1 << to) & enemy_occupancy != 0 {
                     MoveFlag::Capture
@@ -1671,10 +1287,7 @@ impl Position {
 
         let bishops = self.bitboards.pieces[idx][Bishop as usize];
         for from in BitIter::new(bishops) {
-            let attacks = self
-                .attack_tables
-                .get_bishop_attacks(from as usize, all_occupancy)
-                & !our_pieces;
+            let attacks = get_bishop_attacks(from as usize, all_occupancy) & !our_pieces;
             for to in BitIter::new(attacks) {
                 let flag = if (1 << to) & enemy_occupancy != 0 {
                     MoveFlag::Capture
@@ -1692,10 +1305,7 @@ impl Position {
 
         let rooks = self.bitboards.pieces[idx][Rook as usize];
         for from in BitIter::new(rooks) {
-            let attacks = self
-                .attack_tables
-                .get_rook_attacks(from as usize, all_occupancy)
-                & !our_pieces;
+            let attacks = get_rook_attacks(from as usize, all_occupancy) & !our_pieces;
             for to in BitIter::new(attacks) {
                 let flag = if (1 << to) & enemy_occupancy != 0 {
                     MoveFlag::Capture
@@ -1713,12 +1323,8 @@ impl Position {
 
         let queens = self.bitboards.pieces[idx][Queen as usize];
         for from in BitIter::new(queens) {
-            let attacks = (self
-                .attack_tables
-                .get_bishop_attacks(from as usize, all_occupancy)
-                | self
-                    .attack_tables
-                    .get_rook_attacks(from as usize, all_occupancy))
+            let attacks = (get_bishop_attacks(from as usize, all_occupancy)
+                | get_rook_attacks(from as usize, all_occupancy))
                 & !our_pieces;
             for to in BitIter::new(attacks) {
                 let flag = if (1 << to) & enemy_occupancy != 0 {
@@ -1737,7 +1343,7 @@ impl Position {
 
         let king = self.bitboards.pieces[idx][King as usize];
         for from in BitIter::new(king) {
-            let attacks = self.attack_tables.king_attacks[from as usize] & !our_pieces;
+            let attacks = KING_ATTACKS[from as usize] & !our_pieces;
             for to in BitIter::new(attacks) {
                 let flag = if (1u64 << to) & enemy_occupancy != 0 {
                     MoveFlag::Capture
