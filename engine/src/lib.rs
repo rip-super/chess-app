@@ -1617,89 +1617,232 @@ mod tests {
     mod perft {
         use super::*;
 
+        // region: Pos 1 (startpos)
+
         #[test]
-        fn perft_depth_0() {
+        fn perft_pos1_depth0() {
             let mut gs = GameState::new();
-            let actual = perft(&mut gs, 0);
-            let expected = 1;
-            assert_eq!(
-                actual, expected,
-                "Perft(0): expected {}, got {}",
-                expected, actual
-            );
+            assert_eq!(perft(&mut gs, 0), 1);
         }
 
         #[test]
-        fn perft_depth_1() {
+        fn perft_pos1_depth1() {
             let mut gs = GameState::new();
-            let actual = perft(&mut gs, 1);
-            let expected = 20;
-            assert_eq!(
-                actual, expected,
-                "Perft(1): expected {}, got {}",
-                expected, actual
-            );
+            assert_eq!(perft(&mut gs, 1), 20);
         }
 
         #[test]
-        fn perft_depth_2() {
+        fn perft_pos1_depth2() {
             let mut gs = GameState::new();
-            let actual = perft(&mut gs, 2);
-            let expected = 400;
-            assert_eq!(
-                actual, expected,
-                "Perft(2): expected {}, got {}",
-                expected, actual
-            );
+            assert_eq!(perft(&mut gs, 2), 400);
         }
 
         #[test]
-        fn perft_depth_3() {
+        fn perft_pos1_depth3() {
             let mut gs = GameState::new();
-            let actual = perft(&mut gs, 3);
-            let expected = 8902;
-            assert_eq!(
-                actual, expected,
-                "Perft(3): expected {}, got {}",
-                expected, actual
-            );
+            assert_eq!(perft(&mut gs, 3), 8902);
         }
 
         #[test]
-        fn perft_depth_4() {
+        fn perft_pos1_depth4() {
             let mut gs = GameState::new();
-            let actual = perft(&mut gs, 4);
-            let expected = 197281;
-            assert_eq!(
-                actual, expected,
-                "Perft(4): expected {}, got {}",
-                expected, actual
-            );
+            assert_eq!(perft(&mut gs, 4), 197281);
         }
 
         #[test]
-        fn perft_depth_5() {
+        fn perft_pos1_depth5() {
             let mut gs = GameState::new();
-            let actual = perft(&mut gs, 5);
-            let expected = 4865609;
-            assert_eq!(
-                actual, expected,
-                "Perft(5): expected {}, got {}",
-                expected, actual
-            );
+            assert_eq!(perft(&mut gs, 5), 4865609);
         }
 
         #[test]
-        fn perft_depth_6() {
+        fn perft_pos1_depth6() {
             let mut gs = GameState::new();
-            let actual = perft(&mut gs, 6);
-            let expected = 119060324;
-            assert_eq!(
-                actual, expected,
-                "Perft(6): expected {}, got {}",
-                expected, actual
-            );
+            assert_eq!(perft(&mut gs, 6), 119060324);
         }
+
+        // endregion
+
+        // region: Pos 2
+
+        const POS2: &str = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
+        #[test]
+        fn perft_pos2_depth1() {
+            let mut gs = GameState::from_fen(POS2);
+            assert_eq!(perft(&mut gs, 1), 48);
+        }
+
+        #[test]
+        fn perft_pos2_depth2() {
+            let mut gs = GameState::from_fen(POS2);
+            assert_eq!(perft(&mut gs, 2), 2039);
+        }
+
+        #[test]
+        fn perft_pos2_depth3() {
+            let mut gs = GameState::from_fen(POS2);
+            assert_eq!(perft(&mut gs, 3), 97862);
+        }
+
+        #[test]
+        fn perft_pos2_depth4() {
+            let mut gs = GameState::from_fen(POS2);
+            assert_eq!(perft(&mut gs, 4), 4085603);
+        }
+
+        #[test]
+        fn perft_pos2_depth5() {
+            let mut gs = GameState::from_fen(POS2);
+            assert_eq!(perft(&mut gs, 5), 193690690);
+        }
+
+        // endregion
+
+        // region: Pos 3
+
+        const POS3: &str = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
+
+        #[test]
+        fn perft_pos3_depth1() {
+            let mut gs = GameState::from_fen(POS3);
+            assert_eq!(perft(&mut gs, 1), 14);
+        }
+
+        #[test]
+        fn perft_pos3_depth2() {
+            let mut gs = GameState::from_fen(POS3);
+            assert_eq!(perft(&mut gs, 2), 191);
+        }
+
+        #[test]
+        fn perft_pos3_depth3() {
+            let mut gs = GameState::from_fen(POS3);
+            assert_eq!(perft(&mut gs, 3), 2812);
+        }
+
+        #[test]
+        fn perft_pos3_depth4() {
+            let mut gs = GameState::from_fen(POS3);
+            assert_eq!(perft(&mut gs, 4), 43238);
+        }
+
+        #[test]
+        fn perft_pos3_depth5() {
+            let mut gs = GameState::from_fen(POS3);
+            assert_eq!(perft(&mut gs, 5), 674624);
+        }
+
+        // endregion
+
+        // region: Pos 4
+
+        const POS4: &str = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1";
+
+        #[test]
+        fn perft_pos4_depth1() {
+            let mut gs = GameState::from_fen(POS4);
+            assert_eq!(perft(&mut gs, 1), 6);
+        }
+
+        #[test]
+        fn perft_pos4_depth2() {
+            let mut gs = GameState::from_fen(POS4);
+            assert_eq!(perft(&mut gs, 2), 264);
+        }
+
+        #[test]
+        fn perft_pos4_depth3() {
+            let mut gs = GameState::from_fen(POS4);
+            assert_eq!(perft(&mut gs, 3), 9467);
+        }
+
+        #[test]
+        fn perft_pos4_depth4() {
+            let mut gs = GameState::from_fen(POS4);
+            assert_eq!(perft(&mut gs, 4), 422333);
+        }
+
+        #[test]
+        fn perft_pos4_depth5() {
+            let mut gs = GameState::from_fen(POS4);
+            assert_eq!(perft(&mut gs, 5), 15833292);
+        }
+
+        // endregion
+
+        // region: Pos 5
+
+        const POS5: &str = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
+
+        #[test]
+        fn perft_pos5_depth1() {
+            let mut gs = GameState::from_fen(POS5);
+            assert_eq!(perft(&mut gs, 1), 44);
+        }
+
+        #[test]
+        fn perft_pos5_depth2() {
+            let mut gs = GameState::from_fen(POS5);
+            assert_eq!(perft(&mut gs, 2), 1486);
+        }
+
+        #[test]
+        fn perft_pos5_depth3() {
+            let mut gs = GameState::from_fen(POS5);
+            assert_eq!(perft(&mut gs, 3), 62379);
+        }
+
+        #[test]
+        fn perft_pos5_depth4() {
+            let mut gs = GameState::from_fen(POS5);
+            assert_eq!(perft(&mut gs, 4), 2103487);
+        }
+
+        #[test]
+        fn perft_pos5_depth5() {
+            let mut gs = GameState::from_fen(POS5);
+            assert_eq!(perft(&mut gs, 5), 89941194);
+        }
+
+        // endregion
+
+        // region: Pos 6
+
+        const POS6: &str =
+            "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10";
+
+        #[test]
+        fn perft_pos6_depth1() {
+            let mut gs = GameState::from_fen(POS6);
+            assert_eq!(perft(&mut gs, 1), 46);
+        }
+
+        #[test]
+        fn perft_pos6_depth2() {
+            let mut gs = GameState::from_fen(POS6);
+            assert_eq!(perft(&mut gs, 2), 2079);
+        }
+
+        #[test]
+        fn perft_pos6_depth3() {
+            let mut gs = GameState::from_fen(POS6);
+            assert_eq!(perft(&mut gs, 3), 89890);
+        }
+
+        #[test]
+        fn perft_pos6_depth4() {
+            let mut gs = GameState::from_fen(POS6);
+            assert_eq!(perft(&mut gs, 4), 3894594);
+        }
+
+        #[test]
+        fn perft_pos6_depth5() {
+            let mut gs = GameState::from_fen(POS6);
+            assert_eq!(perft(&mut gs, 5), 164075551);
+        }
+
+        // endregion
     }
 }
 
