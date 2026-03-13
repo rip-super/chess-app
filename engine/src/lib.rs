@@ -875,12 +875,12 @@ impl Position {
             self.halfmove_clock += 1;
         }
 
-        if let Some(captured) = undo.captured {
-            if mv.flag != MoveFlag::EnPassant {
-                let captured_color_idx = 1 - color_idx;
-                self.bitboards
-                    .clear_piece(captured_color_idx, captured as usize, mv.to);
-            }
+        if let Some(captured) = undo.captured
+            && mv.flag != MoveFlag::EnPassant
+        {
+            let captured_color_idx = 1 - color_idx;
+            self.bitboards
+                .clear_piece(captured_color_idx, captured as usize, mv.to);
         }
 
         if undo.captured == Some(Piece::Rook) && mv.flag != MoveFlag::EnPassant {
@@ -1010,11 +1010,11 @@ impl Position {
             }
         }
 
-        if let Some(captured) = undo.captured {
-            if mv.flag != MoveFlag::EnPassant {
-                self.bitboards
-                    .set_piece(1 - color_idx, captured as usize, mv.to);
-            }
+        if let Some(captured) = undo.captured
+            && mv.flag != MoveFlag::EnPassant
+        {
+            self.bitboards
+                .set_piece(1 - color_idx, captured as usize, mv.to);
         }
 
         if mv.flag == MoveFlag::EnPassant {
@@ -1560,11 +1560,11 @@ impl GameState {
         }
 
         let hash = self.position.zobrist_hash();
-        if let Some(&count) = self.repetition_table.get(&hash) {
-            if count >= 3 {
-                self.result = GameResult::DrawRepetition;
-                return;
-            }
+        if let Some(&count) = self.repetition_table.get(&hash)
+            && count >= 3
+        {
+            self.result = GameResult::DrawRepetition;
+            return;
         }
 
         if self.is_insufficient_material() {

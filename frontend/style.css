@@ -1,0 +1,52 @@
+body {
+    font-family: monospace;
+    min-height: 100vh;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+#board {
+    font-size: 1.4rem;
+    line-height: 1.6;
+    margin: 16px 0;
+    text-align: left;
+    display: inline-block;
+}
+
+#controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+    justify-content: center;
+}
+
+#move-input {
+    font-family: monospace;
+    font-size: 1rem;
+    padding: 4px 8px;
+    width: 80px;
+}
+
+button {
+    font-family: monospace;
+    font-size: 1rem;
+    padding: 4px 12px;
+    cursor: pointer;
+}
+
+#status {
+    color: #555;
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+#result {
+    color: crimson;
+    font-weight: bold;
+    text-align: center;
+}

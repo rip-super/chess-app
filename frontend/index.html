@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>chess</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="status">Loading WASM...</div>
+    <pre id="board"></pre>
+
+    <div id="controls">
+        <input type="text" id="move-input" placeholder="Ex: e2e4" />
+        <button id="move-btn">Make Move</button>
+        <button id="undo-btn">Undo</button>
+    </div>
+
+    <div id="result"></div>
+
+    <script type="module" src="script.js"></script>
+</body>
+
+</html>
