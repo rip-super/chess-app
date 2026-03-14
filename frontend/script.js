@@ -18,12 +18,12 @@ function selectSquare(sq) { selectedSq = sq; legalTargets = engine.legal_moves()
 
 function makeMove(mv) {
     engine.make_move(mv);
-    if (engine.game_result() !== "ongoing") sfx("game_end");
-    if (mv.is_capture()) sfx("capture");
-    if (mv.is_castle()) sfx("castle");
-    if (mv.is_promotion()) sfx("promote");
-    if (engine.is_in_check()) sfx("check");
-    if (!mv.is_capture() && !mv.is_castle() && !mv.is_promotion()) sfx("move");
+    if (engine.game_result() !== "ongoing") { sfx("game_end"); return; }
+    if (mv.is_promotion()) { sfx("promote"); return; }
+    if (mv.is_capture()) { sfx("capture"); return; }
+    if (mv.is_castle()) { sfx("castle"); return }
+    if (engine.is_in_check()) { sfx("check"); return; }
+    else { sfx("move"); return; }
 }
 
 function isPromotion(fromSq, toSq) {
@@ -258,5 +258,5 @@ document.addEventListener("pointerup", e => {
 
 await init();
 engine = new ChessEngine();
-sfx("game_start");
+sfx("game_start").catch(() => { });
 renderBoard();
