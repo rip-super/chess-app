@@ -20,6 +20,43 @@ function isPromotion(fromSq, toSq) {
     return toRank === 7 || toRank === 0;
 }
 
+function checkGameOver() {
+    const result = engine.game_result();
+    if (result === "ongoing") return;
+
+    const messages = {
+        checkmate_white: { top: "Checkmate", bottom: "White wins!" },
+        checkmate_black: { top: "Checkmate", bottom: "Black wins!" },
+        stalemate: { top: "Stalemate", bottom: "Draw!" },
+        draw_repetition: { top: "Draw!", bottom: "By Repetition" },
+        draw_fifty_move: { top: "Draw!", bottom: "By Fifty Move Rule" },
+        draw_insufficient: { top: "Draw!", bottom: "Due To Insufficient Material" },
+    };
+
+    const { top, bottom } = messages[result];
+
+    const panel = document.createElement("div");
+    panel.className = `gameover-panel`;
+    panel.innerHTML = `
+        <div class="gameover-text">
+            <span class="gameover-top">${top}</span>
+            <span class="gameover-bottom">${bottom}</span>
+        </div>
+        <div class="gameover-actions">
+            <button class="gameover-btn" id="new-game-btn">New game</button>
+        </div>
+    `;
+    board.appendChild(panel);
+
+    document.getElementById("new-game-btn").addEventListener("pointerdown", e => {
+        e.stopPropagation();
+        engine = new ChessEngine();
+        selectedSq = null; legalTargets = [];
+        panel.remove();
+        renderBoard();
+    });
+}
+
 function renderBoard(invert = false) {
     board.innerHTML = "";
 
@@ -95,6 +132,7 @@ function renderBoard(invert = false) {
                         animating = false;
                         animatingToSq = null;
                         renderBoard(invert);
+                        checkGameOver();
                     }, { once: true });
 
                     return;
@@ -153,10 +191,13 @@ function renderBoard(invert = false) {
             btn.addEventListener("pointerdown", e => {
                 e.stopPropagation();
                 const uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}${p.toLowerCase()}`;
+
                 const mv = engine.parse_uci(uci);
                 if (mv) engine.make_move(mv);
+
                 pendingPromotion = null;
                 renderBoard(invert);
+                checkGameOver();
             });
 
             card.appendChild(btn);
@@ -229,6 +270,7 @@ document.addEventListener("pointerup", e => {
     }
 
     renderBoard();
+    checkGameOver();
 });
 
 await init();

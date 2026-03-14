@@ -134,6 +134,76 @@ body {
     filter: brightness(1.2);
 }
 
+.gameover-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 32px 40px;
+    background: #1e1a14;
+    border: 1px solid #3a3020;
+    border-radius: 6px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8);
+    animation: slideUp 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    text-align: center;
+}
+
+.gameover-top {
+    display: block;
+    font-size: 1.4rem;
+    font-weight: bold;
+    color: #e8dcc8;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.gameover-bottom {
+    display: block;
+    font-size: 0.75rem;
+    color: #8a7d6b;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    margin-top: 10px;
+}
+
+.gameover-btn {
+    background: transparent;
+    border: 1px solid #4a4030;
+    color: #e8dcc8;
+    font-family: monospace;
+    font-size: 0.78rem;
+    padding: 7px 20px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    transition: border-color 0.12s, color 0.12s;
+}
+
+.gameover-btn:hover {
+    border-color: #c9a84c;
+    color: #c9a84c;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translate(-50%, calc(-50% + 20px));
+        opacity: 0;
+    }
+
+    to {
+        transform: translate(-50%, -50%);
+        opacity: 1;
+    }
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
