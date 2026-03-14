@@ -13,30 +13,42 @@ const board = document.getElementById("board");
 
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
 
+function deselect() { selectedSq = null; legalTargets = []; }
+function selectSquare(sq) { selectedSq = sq; legalTargets = engine.legal_moves().filter(m => m.from_sq() === sq).map(m => m.to_sq()); }
+
+function makeMove(mv) {
+    engine.make_move(mv);
+    if (engine.game_result() !== "ongoing") sfx("game_end");
+    if (mv.is_capture()) sfx("capture");
+    if (mv.is_castle()) sfx("castle");
+    if (mv.is_promotion()) sfx("promote");
+    if (engine.is_in_check()) sfx("check");
+    if (!mv.is_capture() && !mv.is_castle() && !mv.is_promotion()) sfx("move");
+}
+
 function isPromotion(fromSq, toSq) {
     const piece = engine.piece_on(fromSq);
     if (piece !== "wP" && piece !== "bP") return false;
-    const toRank = Math.floor(toSq / 8);
-    return toRank === 7 || toRank === 0;
+    return Math.floor(toSq / 8) === 7 || Math.floor(toSq / 8) === 0;
 }
 
 function checkGameOver() {
     const result = engine.game_result();
     if (result === "ongoing") return;
 
-    const messages = {
+    const msgs = {
         checkmate_white: { top: "Checkmate", bottom: "White wins!" },
         checkmate_black: { top: "Checkmate", bottom: "Black wins!" },
         stalemate: { top: "Stalemate", bottom: "Draw!" },
-        draw_repetition: { top: "Draw!", bottom: "By Repetition" },
-        draw_fifty_move: { top: "Draw!", bottom: "By Fifty Move Rule" },
-        draw_insufficient: { top: "Draw!", bottom: "Due To Insufficient Material" },
+        draw_repetition: { top: "Draw", bottom: "By Repetition" },
+        draw_fifty_move: { top: "Draw", bottom: "By Fifty Move Rule" },
+        draw_insufficient: { top: "Draw", bottom: "By Insufficient Material" },
     };
 
-    const { top, bottom } = messages[result];
-
+    const { top, bottom } = msgs[result];
     const panel = document.createElement("div");
-    panel.className = `gameover-panel`;
+
+    panel.className = "gameover-panel";
     panel.innerHTML = `
         <div class="gameover-text">
             <span class="gameover-top">${top}</span>
@@ -46,12 +58,13 @@ function checkGameOver() {
             <button class="gameover-btn" id="new-game-btn">New game</button>
         </div>
     `;
+
     board.appendChild(panel);
 
     document.getElementById("new-game-btn").addEventListener("pointerdown", e => {
         e.stopPropagation();
         engine = new ChessEngine();
-        selectedSq = null; legalTargets = [];
+        deselect();
         panel.remove();
         sfx("game_start");
         renderBoard();
@@ -60,6 +73,9 @@ function checkGameOver() {
 
 function renderBoard(invert = false) {
     board.innerHTML = "";
+
+    const inCheck = engine.is_in_check();
+    const kingSq = inCheck ? engine.king_square(engine.side_to_move()) : null;
 
     for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 8; col++) {
@@ -74,6 +90,7 @@ function renderBoard(invert = false) {
 
             if (sqIndex === selectedSq) div.classList.add("selected");
             if (legalTargets.includes(sqIndex)) div.classList.add(piece ? "legal-capture" : "legal");
+            if (sqIndex === kingSq) div.classList.add("in-check");
 
             if (piece) {
                 const img = document.createElement("img");
@@ -86,11 +103,6 @@ function renderBoard(invert = false) {
                 div.appendChild(img);
             }
 
-            if (engine.is_in_check()) {
-                const kingSq = engine.king_square(engine.side_to_move());
-                if (kingSq === sqIndex) div.classList.add("in-check");
-            }
-
             div.addEventListener("pointerdown", e => {
                 if (animating) return;
                 e.preventDefault();
@@ -101,21 +113,18 @@ function renderBoard(invert = false) {
                     const mv = engine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === sqIndex);
                     if (!mv) return;
 
-                    const fromRect = board.querySelector(`[data-sq="${fromSq}"]`).getBoundingClientRect();
-                    const toRect = div.getBoundingClientRect();
-
                     if (isPromotion(fromSq, sqIndex)) {
                         pendingPromotion = { fromSq, toSq: sqIndex };
-                        selectedSq = null; legalTargets = [];
+                        deselect();
                         renderBoard(invert);
                         return;
                     }
 
-                    engine.make_move(mv);
-                    sfx(engine.game_result() !== "ongoing" ? "game_end" : engine.is_in_check() ? "check" : mv.is_promotion() ? "promote" : mv.is_castle() ? "castle" : mv.is_capture() ? "capture" : "move");
+                    const fromRect = board.querySelector(`[data-sq="${fromSq}"]`).getBoundingClientRect();
+                    const toRect = div.getBoundingClientRect();
 
-                    selectedSq = null;
-                    legalTargets = [];
+                    makeMove(mv);
+                    deselect();
                     animatingToSq = sqIndex;
                     animating = true;
                     renderBoard(invert);
@@ -131,8 +140,7 @@ function renderBoard(invert = false) {
                     Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
                     anim.addEventListener("transitionend", () => {
                         anim.remove();
-                        animating = false;
-                        animatingToSq = null;
+                        animating = false; animatingToSq = null;
                         renderBoard(invert);
                         checkGameOver();
                     }, { once: true });
@@ -140,12 +148,9 @@ function renderBoard(invert = false) {
                     return;
                 }
 
-                if (piece) {
-                    pendingPointer = { sqIndex, piece, startX: e.clientX, startY: e.clientY };
-                    return;
-                }
+                if (piece) { pendingPointer = { sqIndex, piece, startX: e.clientX, startY: e.clientY }; return; }
 
-                selectedSq = null; legalTargets = [];
+                deselect();
                 renderBoard(invert);
             });
 
@@ -158,14 +163,14 @@ function renderBoard(invert = false) {
         const promoRank = Math.floor(toSq / 8);
         const promoFile = toSq % 8;
         const side = promoRank === 7 ? "w" : "b";
-        const pieces = ["Q", "R", "B", "N"];
+        const promoList = ["Q", "R", "B", "N"];
 
         const backdrop = document.createElement("div");
         backdrop.className = "promo-backdrop";
         backdrop.addEventListener("pointerdown", e => {
             e.stopPropagation();
             pendingPromotion = null;
-            selectedSq = null; legalTargets = [];
+            deselect();
             renderBoard(invert);
         });
 
@@ -173,29 +178,20 @@ function renderBoard(invert = false) {
 
         const card = document.createElement("div");
         card.className = "promo-card";
-
-        const visualCol = invert ? (7 - promoFile) : promoFile;
-        const sqSizePx = board.clientWidth / 8;
-
-        card.style.left = (visualCol * sqSizePx) + "px";
+        card.style.left = ((invert ? 7 - promoFile : promoFile) * (board.clientWidth / 8)) + "px";
         card.style.top = promoRank === 7 ? "0px" : "auto";
         card.style.bottom = promoRank === 0 ? "0px" : "auto";
 
-        pieces.forEach((p, _) => {
+        promoList.forEach(p => {
             const btn = document.createElement("div");
             btn.className = "promo-btn";
-
-            const img = document.createElement("img");
-            img.src = `pieces/${side}${p}.svg`;
-            img.className = "piece";
-
-            btn.appendChild(img);
+            btn.appendChild(Object.assign(document.createElement("img"), { src: `assets/images/${side}${p}.svg`, className: "piece" }));
             btn.addEventListener("pointerdown", e => {
                 e.stopPropagation();
-                const uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}${p.toLowerCase()}`;
 
+                const uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}${p.toLowerCase()}`;
                 const mv = engine.parse_uci(uci);
-                if (mv) { engine.make_move(mv); sfx(engine.game_result() !== "ongoing" ? "game_end" : engine.is_in_check() ? "check" : mv.is_promotion() ? "promote" : mv.is_castle() ? "castle" : mv.is_capture() ? "capture" : "move"); }
+                if (mv) makeMove(mv);
 
                 pendingPromotion = null;
                 renderBoard(invert);
@@ -219,9 +215,7 @@ document.addEventListener("pointermove", e => {
         document.body.appendChild(ghost);
 
         dragState = { fromSq: sqIndex, ghostEl: ghost };
-        selectedSq = sqIndex;
-        legalTargets = engine.legal_moves().filter(m => m.from_sq() === sqIndex).map(m => m.to_sq());
-
+        selectSquare(sqIndex);
         renderBoard();
     }
 
@@ -232,14 +226,7 @@ document.addEventListener("pointerup", e => {
     if (pendingPointer && !dragState) {
         const { sqIndex } = pendingPointer;
         pendingPointer = null;
-
-        if (selectedSq === sqIndex) {
-            selectedSq = null; legalTargets = [];
-        } else {
-            selectedSq = sqIndex;
-            legalTargets = engine.legal_moves().filter(m => m.from_sq() === sqIndex).map(m => m.to_sq());
-        }
-
+        selectedSq === sqIndex ? deselect() : selectSquare(sqIndex);
         renderBoard();
         return;
     }
@@ -253,23 +240,16 @@ document.addEventListener("pointerup", e => {
 
     const toSq = parseInt(document.elementFromPoint(e.clientX, e.clientY)?.closest(".sq")?.dataset.sq);
     if (!isNaN(toSq) && toSq !== fromSq && legalTargets.includes(toSq)) {
-        const mv = engine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === toSq);
-        if (mv) {
-            if (isPromotion(fromSq, toSq)) {
-                pendingPromotion = { fromSq, toSq };
-                selectedSq = null; legalTargets = [];
-                renderBoard();
-                return;
-            }
-
-            engine.make_move(mv);
-            sfx(engine.game_result() !== "ongoing" ? "game_end" : engine.is_in_check() ? "check" : mv.is_promotion() ? "promote" : mv.is_castle() ? "castle" : mv.is_capture() ? "capture" : "move");
-
-            selectedSq = null;
-            legalTargets = [];
+        if (isPromotion(fromSq, toSq)) {
+            pendingPromotion = { fromSq, toSq };
+            deselect();
+            renderBoard();
+            return;
         }
+        const mv = engine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === toSq);
+        if (mv) { makeMove(mv); deselect(); }
     } else {
-        selectedSq = null; legalTargets = [];
+        deselect();
     }
 
     renderBoard();
