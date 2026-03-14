@@ -1,24 +1,32 @@
+// todo: move anims, dragging, promotion picker
+
 import init, { ChessEngine } from "./pkg/wasm.js";
 
 let selectedSq = null;
 let legalTargets = [];
 
-function getLegalTargets(engine, fromSq) {
-    return engine.legal_moves().filter(mv => mv.from_sq() === fromSq).map(mv => mv.to_sq());
-}
-
 function onSquareClick(sq, engine) {
-    if (selectedSq === sq) {
-        selectedSq = null;
-        legalTargets = [];
-    } else if (engine.piece_on(sq)) {
-        selectedSq = sq;
-        legalTargets = getLegalTargets(engine, sq);
-    } else {
-        selectedSq = null;
-        legalTargets = [];
+    if (selectedSq !== null && legalTargets.includes(sq)) {
+        const mv = engine.legal_moves().find(mv => mv.from_sq() === selectedSq && mv.to_sq() === sq);
+        if (mv) {
+            engine.make_move(mv);
+            selectedSq = null;
+            legalTargets = [];
+            renderBoard(board, engine);
+        }
+
+        return;
     }
 
+    if (engine.piece_on(sq)) {
+        selectedSq = sq;
+        legalTargets = engine.legal_moves().filter(mv => mv.from_sq() === sq).map(mv => mv.to_sq());
+        renderBoard(board, engine);
+        return;
+    }
+
+    selectedSq = null;
+    legalTargets = [];
     renderBoard(board, engine);
 }
 
