@@ -26,6 +26,24 @@ body {
     pointer-events: none;
 }
 
+.piece-ghost {
+    position: fixed;
+    width: 72px;
+    height: 72px;
+    pointer-events: none;
+    z-index: 1000;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+    transform: translate(-50%, -50%);
+}
+
+.piece-anim {
+    position: fixed;
+    pointer-events: none;
+    z-index: 999;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+    transition: left 0.12s ease, top 0.12s ease;
+}
+
 .sq {
     width: var(--sq);
     height: var(--sq);
@@ -48,7 +66,7 @@ body {
 }
 
 .sq.legal::after {
-    content: '';
+    content: "";
     position: absolute;
     width: 30%;
     height: 30%;
@@ -57,10 +75,11 @@ body {
     pointer-events: none;
 }
 
-.sq.legal:has(img)::after {
-    width: 100%;
-    height: 100%;
-    background: transparent;
-    box-shadow: inset 0 0 0 6px rgba(0, 0, 0, 0.2);
+.sq.legal-capture::after {
+    content: "";
+    position: absolute;
+    inset: 0;
     border-radius: 50%;
+    box-shadow: inset 0 0 0 6px rgba(0, 0, 0, 0.2);
+    pointer-events: none;
 }
