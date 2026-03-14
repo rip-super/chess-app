@@ -88,6 +88,11 @@ function renderBoard(invert = false) {
                 renderBoard(invert);
             });
 
+            if (engine.is_in_check()) {
+                const kingSq = engine.king_square(engine.side_to_move());
+                if (kingSq === sqIndex) div.classList.add("in-check");
+            }
+
             board.appendChild(div);
         }
     }

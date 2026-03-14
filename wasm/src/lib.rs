@@ -216,6 +216,29 @@ impl ChessEngine {
         })
     }
 
+    pub fn side_to_move(&self) -> String {
+        match self.gs.position.side_to_move {
+            Color::White => "w".to_string(),
+            Color::Black => "b".to_string(),
+        }
+    }
+
+    pub fn king_square(&self, color: &str) -> Option<u8> {
+        let target = match color {
+            "w" => Color::White,
+            "b" => Color::Black,
+            _ => return None,
+        };
+        for sq in 0..64u8 {
+            if let Some((c, Piece::King)) = self.gs.position.piece_on(sq)
+                && c == target
+            {
+                return Some(sq);
+            }
+        }
+        None
+    }
+
     pub fn make_move(&mut self, mv: &ChessMove) -> Result<(), JsValue> {
         self.gs.make_move(mv.0).map_err(JsValue::from_str)
     }

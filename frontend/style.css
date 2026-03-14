@@ -23,6 +23,8 @@ body {
 }
 
 .piece {
+    position: relative;
+    z-index: 1;
     pointer-events: none;
 }
 
@@ -82,4 +84,13 @@ body {
     border-radius: 50%;
     box-shadow: inset 0 0 0 6px rgba(0, 0, 0, 0.2);
     pointer-events: none;
+}
+
+.sq.in-check::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle, #ff0000aa 0%, #cc000066 60%, transparent 90%);
+    pointer-events: none;
+    z-index: 0;
 }
