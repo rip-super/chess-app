@@ -1,4 +1,4 @@
-// todo: promotion picker
+// todo: sounds
 
 import init, { ChessEngine } from "./pkg/wasm.js";
 
@@ -9,8 +9,16 @@ let dragState = null;
 let animating = false;
 let pendingPointer = null;
 let animatingToSq = null;
+let pendingPromotion = null;
 
 const board = document.getElementById("board");
+
+function isPromotion(fromSq, toSq) {
+    const piece = engine.piece_on(fromSq);
+    if (piece !== "wP" && piece !== "bP") return false;
+    const toRank = Math.floor(toSq / 8);
+    return toRank === 7 || toRank === 0;
+}
 
 function renderBoard(invert = false) {
     board.innerHTML = "";
@@ -40,6 +48,11 @@ function renderBoard(invert = false) {
                 div.appendChild(img);
             }
 
+            if (engine.is_in_check()) {
+                const kingSq = engine.king_square(engine.side_to_move());
+                if (kingSq === sqIndex) div.classList.add("in-check");
+            }
+
             div.addEventListener("pointerdown", e => {
                 if (animating) return;
                 e.preventDefault();
@@ -53,7 +66,15 @@ function renderBoard(invert = false) {
                     const fromRect = board.querySelector(`[data-sq="${fromSq}"]`).getBoundingClientRect();
                     const toRect = div.getBoundingClientRect();
 
+                    if (isPromotion(fromSq, sqIndex)) {
+                        pendingPromotion = { fromSq, toSq: sqIndex };
+                        selectedSq = null; legalTargets = [];
+                        renderBoard(invert);
+                        return;
+                    }
+
                     engine.make_move(mv);
+
                     selectedSq = null;
                     legalTargets = [];
                     animatingToSq = sqIndex;
@@ -88,13 +109,60 @@ function renderBoard(invert = false) {
                 renderBoard(invert);
             });
 
-            if (engine.is_in_check()) {
-                const kingSq = engine.king_square(engine.side_to_move());
-                if (kingSq === sqIndex) div.classList.add("in-check");
-            }
-
             board.appendChild(div);
         }
+    }
+
+    if (pendingPromotion) {
+        const { fromSq, toSq } = pendingPromotion;
+        const promoRank = Math.floor(toSq / 8);
+        const promoFile = toSq % 8;
+        const side = promoRank === 7 ? "w" : "b";
+        const pieces = ["Q", "R", "B", "N"];
+
+        const backdrop = document.createElement("div");
+        backdrop.className = "promo-backdrop";
+        backdrop.addEventListener("pointerdown", e => {
+            e.stopPropagation();
+            pendingPromotion = null;
+            selectedSq = null; legalTargets = [];
+            renderBoard(invert);
+        });
+
+        board.appendChild(backdrop);
+
+        const card = document.createElement("div");
+        card.className = "promo-card";
+
+        const visualCol = invert ? (7 - promoFile) : promoFile;
+        const sqSizePx = board.clientWidth / 8;
+
+        card.style.left = (visualCol * sqSizePx) + "px";
+        card.style.top = promoRank === 7 ? "0px" : "auto";
+        card.style.bottom = promoRank === 0 ? "0px" : "auto";
+
+        pieces.forEach((p, _) => {
+            const btn = document.createElement("div");
+            btn.className = "promo-btn";
+
+            const img = document.createElement("img");
+            img.src = `pieces/${side}${p}.svg`;
+            img.className = "piece";
+
+            btn.appendChild(img);
+            btn.addEventListener("pointerdown", e => {
+                e.stopPropagation();
+                const uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}${p.toLowerCase()}`;
+                const mv = engine.parse_uci(uci);
+                if (mv) engine.make_move(mv);
+                pendingPromotion = null;
+                renderBoard(invert);
+            });
+
+            card.appendChild(btn);
+        });
+
+        board.appendChild(card);
     }
 }
 
@@ -143,7 +211,19 @@ document.addEventListener("pointerup", e => {
     const toSq = parseInt(document.elementFromPoint(e.clientX, e.clientY)?.closest(".sq")?.dataset.sq);
     if (!isNaN(toSq) && toSq !== fromSq && legalTargets.includes(toSq)) {
         const mv = engine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === toSq);
-        if (mv) { engine.make_move(mv); selectedSq = null; legalTargets = []; }
+        if (mv) {
+            if (isPromotion(fromSq, toSq)) {
+                pendingPromotion = { fromSq, toSq };
+                selectedSq = null; legalTargets = [];
+                renderBoard();
+                return;
+            }
+
+            engine.make_move(mv);
+
+            selectedSq = null;
+            legalTargets = [];
+        }
     } else {
         selectedSq = null; legalTargets = [];
     }

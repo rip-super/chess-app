@@ -15,6 +15,7 @@ body {
 }
 
 #board {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(8, var(--sq));
     grid-template-rows: repeat(8, var(--sq));
@@ -93,4 +94,55 @@ body {
     background: radial-gradient(circle, #ff0000aa 0%, #cc000066 60%, transparent 90%);
     pointer-events: none;
     z-index: 0;
+}
+
+.promo-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 20;
+}
+
+.promo-card {
+    position: absolute;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    animation: fadeIn 0.15s ease;
+    width: var(--sq);
+}
+
+.promo-btn {
+    width: var(--sq);
+    height: var(--sq);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f0d9b5;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.promo-btn:nth-child(even) {
+    background: #b58863;
+}
+
+.promo-btn:hover {
+    filter: brightness(1.2);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scaleY(0.85);
+        transform-origin: top;
+    }
+
+    to {
+        opacity: 1;
+        transform: scaleY(1);
+    }
 }
