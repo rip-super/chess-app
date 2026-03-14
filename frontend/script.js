@@ -1,6 +1,4 @@
-// todo: sounds
-
-import init, { ChessEngine } from "./pkg/wasm.js";
+import init, { ChessEngine } from "./assets/wasm/wasm.js";
 
 let engine = null;
 let selectedSq = null;
@@ -12,6 +10,8 @@ let animatingToSq = null;
 let pendingPromotion = null;
 
 const board = document.getElementById("board");
+
+const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
 
 function isPromotion(fromSq, toSq) {
     const piece = engine.piece_on(fromSq);
@@ -53,6 +53,7 @@ function checkGameOver() {
         engine = new ChessEngine();
         selectedSq = null; legalTargets = [];
         panel.remove();
+        sfx("game_start");
         renderBoard();
     });
 }
@@ -76,7 +77,7 @@ function renderBoard(invert = false) {
 
             if (piece) {
                 const img = document.createElement("img");
-                img.src = `pieces/${piece}.svg`;
+                img.src = `assets/images/${piece}.svg`;
                 img.className = "piece";
 
                 if (dragState?.fromSq === sqIndex) img.style.opacity = "0.2";
@@ -111,6 +112,7 @@ function renderBoard(invert = false) {
                     }
 
                     engine.make_move(mv);
+                    sfx(engine.game_result() !== "ongoing" ? "game_end" : engine.is_in_check() ? "check" : mv.is_promotion() ? "promote" : mv.is_castle() ? "castle" : mv.is_capture() ? "capture" : "move");
 
                     selectedSq = null;
                     legalTargets = [];
@@ -119,7 +121,7 @@ function renderBoard(invert = false) {
                     renderBoard(invert);
 
                     const size = fromRect.width * 0.85;
-                    const anim = Object.assign(document.createElement("img"), { src: `pieces/${pieceCode}.svg`, className: "piece-anim" });
+                    const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
 
                     Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
                     document.body.appendChild(anim);
@@ -193,7 +195,7 @@ function renderBoard(invert = false) {
                 const uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}${p.toLowerCase()}`;
 
                 const mv = engine.parse_uci(uci);
-                if (mv) engine.make_move(mv);
+                if (mv) { engine.make_move(mv); sfx(engine.game_result() !== "ongoing" ? "game_end" : engine.is_in_check() ? "check" : mv.is_promotion() ? "promote" : mv.is_castle() ? "castle" : mv.is_capture() ? "capture" : "move"); }
 
                 pendingPromotion = null;
                 renderBoard(invert);
@@ -211,7 +213,7 @@ document.addEventListener("pointermove", e => {
     if (pendingPointer && !dragState) {
         if (Math.hypot(e.clientX - pendingPointer.startX, e.clientY - pendingPointer.startY) < 5) return;
         const { sqIndex, piece } = pendingPointer;
-        const ghost = Object.assign(document.createElement("img"), { src: `pieces/${piece}.svg`, className: "piece-ghost" });
+        const ghost = Object.assign(document.createElement("img"), { src: `assets/images/${piece}.svg`, className: "piece-ghost" });
 
         Object.assign(ghost.style, { left: e.clientX + "px", top: e.clientY + "px" });
         document.body.appendChild(ghost);
@@ -261,6 +263,7 @@ document.addEventListener("pointerup", e => {
             }
 
             engine.make_move(mv);
+            sfx(engine.game_result() !== "ongoing" ? "game_end" : engine.is_in_check() ? "check" : mv.is_promotion() ? "promote" : mv.is_castle() ? "castle" : mv.is_capture() ? "capture" : "move");
 
             selectedSq = null;
             legalTargets = [];
@@ -275,4 +278,5 @@ document.addEventListener("pointerup", e => {
 
 await init();
 engine = new ChessEngine();
+sfx("game_start");
 renderBoard();

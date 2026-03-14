@@ -1,0 +1,34 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_chessengine_free: (a: number, b: number) => void;
+export const __wbg_chessmove_free: (a: number, b: number) => void;
+export const chessengine_from_fen: (a: number, b: number) => number;
+export const chessengine_game_result: (a: number) => [number, number];
+export const chessengine_is_in_check: (a: number) => number;
+export const chessengine_king_square: (a: number, b: number, c: number) => number;
+export const chessengine_legal_moves: (a: number) => [number, number];
+export const chessengine_make_move: (a: number, b: number) => [number, number];
+export const chessengine_new: () => number;
+export const chessengine_parse_uci: (a: number, b: number, c: number) => number;
+export const chessengine_piece_on: (a: number, b: number) => [number, number];
+export const chessengine_side_to_move: (a: number) => [number, number];
+export const chessengine_undo_move: (a: number) => void;
+export const chessmove_from_sq: (a: number) => number;
+export const chessmove_is_capture: (a: number) => number;
+export const chessmove_is_castle: (a: number) => number;
+export const chessmove_is_double_pawn_push: (a: number) => number;
+export const chessmove_is_en_passant: (a: number) => number;
+export const chessmove_is_kingside_castle: (a: number) => number;
+export const chessmove_is_promotion: (a: number) => number;
+export const chessmove_is_queenside_castle: (a: number) => number;
+export const chessmove_promotion_piece: (a: number) => [number, number];
+export const chessmove_to_sq: (a: number) => number;
+export const chessmove_to_uci: (a: number) => [number, number];
+export const __wbindgen_externrefs: WebAssembly.Table;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
+export const __externref_drop_slice: (a: number, b: number) => void;
+export const __externref_table_dealloc: (a: number) => void;
+export const __wbindgen_start: () => void;
