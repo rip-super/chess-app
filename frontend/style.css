@@ -1,52 +1,43 @@
+:root {
+    --light: #f0d9b5;
+    --dark: #b58863;
+    --sq: 10vh;
+}
+
 body {
     font-family: monospace;
     min-height: 100vh;
     margin: 0;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 20px;
-    box-sizing: border-box;
+    background: #1a1714;
 }
 
 #board {
-    font-size: 1.4rem;
-    line-height: 1.6;
-    margin: 16px 0;
-    text-align: left;
-    display: inline-block;
+    display: grid;
+    grid-template-columns: repeat(8, var(--sq));
+    grid-template-rows: repeat(8, var(--sq));
+    border: 3px solid #0e0c08;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
 }
 
-#controls {
+.sq {
+    width: var(--sq);
+    height: var(--sq);
     display: flex;
-    gap: 8px;
-    margin-bottom: 8px;
+    align-items: center;
     justify-content: center;
 }
 
-#move-input {
-    font-family: monospace;
-    font-size: 1rem;
-    padding: 4px 8px;
-    width: 80px;
+.sq.light {
+    background: var(--light);
 }
 
-button {
-    font-family: monospace;
-    font-size: 1rem;
-    padding: 4px 12px;
-    cursor: pointer;
+.sq.dark {
+    background: var(--dark);
 }
 
-#status {
-    color: #555;
-    margin-bottom: 8px;
-    text-align: center;
-}
-
-#result {
-    color: crimson;
-    font-weight: bold;
-    text-align: center;
+.piece {
+    pointer-events: none;
 }
