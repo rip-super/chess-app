@@ -1,3 +1,5 @@
+// TODO: highlight last made move, arrows
+
 import init, { ChessEngine } from "../wasm/wasm.js";
 
 await init();
