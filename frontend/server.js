@@ -3,15 +3,42 @@ import { createNodeWebSocket } from "@hono/node-ws";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { readFile } from "fs/promises";
-import init, { ChessEngine } from "./ui/assets/wasm/wasm.js";
+import init, { ChessEngine } from "./ui/wasm/wasm.js";
 
-const wasm = await readFile(new URL("./ui/assets/wasm/wasm_bg.wasm", import.meta.url));
+const wasm = await readFile(new URL("./ui/wasm/wasm_bg.wasm", import.meta.url));
 await init({ module_or_path: wasm });
 
 const app = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
 const games = new Map();
+let waitingPlayer = null;
+
+app.get("/match", async (c) => {
+    if (waitingPlayer) {
+        const gameId = waitingPlayer.gameId;
+        waitingPlayer.resolve();
+        waitingPlayer = null;
+        return c.json({ gameId });
+    }
+
+    const gameId = crypto.randomUUID();
+    games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {} });
+
+    return new Promise(resolve => {
+        waitingPlayer = { gameId, resolve };
+
+        setTimeout(() => {
+            if (waitingPlayer?.gameId === gameId) {
+                waitingPlayer = null;
+                games.delete(gameId);
+                resolve(c.json({ error: "timeout" }, 408));
+            }
+        }, 30000);
+
+        waitingPlayer.resolve = () => resolve(c.json({ gameId }));
+    });
+});
 
 app.get("/ws/:gameId", upgradeWebSocket(c => {
     const gameId = c.req.param("gameId");
@@ -105,7 +132,9 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
     };
 }));
 
+app.get("/", async (c) => c.html(await readFile("./ui/index.html", "utf8")));
 app.use("/*", serveStatic({ root: "./ui" }));
+app.get("/play/:gameId", async (c) => c.html(await readFile("./ui/play/index.html", "utf8")));
 
 const server = serve({ fetch: app.fetch, port: 3000 }, info => {
     console.log(`Server running on http://localhost:${info.port}`);
