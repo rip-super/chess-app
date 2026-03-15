@@ -10,6 +10,7 @@ let animating = false;
 let pendingPointer = null;
 let animatingToSq = null;
 let pendingPromotion = null;
+let color = "w";
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
@@ -36,26 +37,25 @@ ws.addEventListener("message", e => {
     if (msg.type === "error") {
         console.warn("Move rejected:", msg.msg);
         deselect();
-        renderBoard();
+        renderBoard(color === "b");
+        return;
+    }
+
+    if (msg.type === "assign") {
+        color = msg.color;
         return;
     }
 
     if (msg.type === "sync") {
         engine = ChessEngine.from_fen(msg.fen);
         deselect();
-        renderBoard();
+        renderBoard(color === "b");
         return;
     }
 
     if (msg.type === "move") {
-        const fromSq = uciToSq(msg.uci.slice(0, 2));
-        const toSq = uciToSq(msg.uci.slice(2, 4));
-        const pieceCode = engine.piece_on(fromSq);
-
-        const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
-        const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
-
-        engine = ChessEngine.from_fen(msg.fen);
+        const mv = engine.parse_uci(msg.uci);
+        if (mv) engine.make_move(mv);
 
         if (msg.result !== "ongoing") sfx("game_end");
         if (msg.isPromotion) sfx("promote");
@@ -65,9 +65,16 @@ ws.addEventListener("message", e => {
         if (!msg.isCapture && !msg.isCastle && !msg.isPromotion) sfx("move");
 
         deselect();
+
+        const fromSq = uciToSq(msg.uci.slice(0, 2));
+        const toSq = uciToSq(msg.uci.slice(2, 4));
+        const pieceCode = engine.piece_on(toSq);
+        const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
+        const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
+
         animatingToSq = toSq;
         animating = true;
-        renderBoard();
+        renderBoard(color === "b");
 
         const size = fromRect.width * 0.85;
         const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
@@ -81,7 +88,7 @@ ws.addEventListener("message", e => {
         anim.addEventListener("transitionend", () => {
             anim.remove();
             animating = false; animatingToSq = null;
-            renderBoard();
+            renderBoard(color === "b");
             checkGameOver(msg.result);
         }, { once: true });
     }
@@ -127,10 +134,17 @@ function checkGameOver(result) {
 }
 
 function renderBoard(invert = false) {
-    board.innerHTML = "";
+    if (board.querySelectorAll(".sq").length === 0) {
+        for (let i = 0; i < 64; i++) {
+            const div = document.createElement("div");
+            div.className = "sq";
+            board.appendChild(div);
+        }
+    }
 
     const inCheck = engine.is_in_check();
     const kingSq = inCheck ? engine.king_square(engine.side_to_move()) : null;
+    const sqs = board.querySelectorAll(".sq");
 
     for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 8; col++) {
@@ -138,8 +152,8 @@ function renderBoard(invert = false) {
             const file = invert ? 7 - col : col;
             const sqIndex = rank * 8 + file;
             const piece = engine.piece_on(sqIndex);
+            const div = sqs[row * 8 + col];
 
-            const div = document.createElement("div");
             div.className = "sq " + ((rank + file) % 2 === 0 ? "dark" : "light");
             div.dataset.sq = sqIndex;
 
@@ -147,47 +161,23 @@ function renderBoard(invert = false) {
             if (legalTargets.includes(sqIndex)) div.classList.add(piece ? "legal-capture" : "legal");
             if (sqIndex === kingSq) div.classList.add("in-check");
 
+            let img = div.querySelector("img.piece");
             if (piece) {
-                const img = document.createElement("img");
-                img.src = `assets/images/${piece}.svg`;
-                img.className = "piece";
-
-                if (dragState?.fromSq === sqIndex) img.style.opacity = "0.2";
-                if (animatingToSq === sqIndex) img.style.opacity = "0";
-
-                div.appendChild(img);
-            }
-
-            div.addEventListener("pointerdown", e => {
-                if (animating) return;
-                e.preventDefault();
-
-                if (selectedSq !== null && legalTargets.includes(sqIndex)) {
-                    const fromSq = selectedSq;
-                    const mv = engine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === sqIndex);
-                    if (!mv) return;
-
-                    if (isPromotion(fromSq, sqIndex)) {
-                        pendingPromotion = { fromSq, toSq: sqIndex };
-                        deselect();
-                        renderBoard(invert);
-                        return;
-                    }
-
-                    sendMove(mv.to_uci());
-                    deselect();
-                    return;
+                if (!img) {
+                    img = document.createElement("img");
+                    img.className = "piece";
+                    div.appendChild(img);
                 }
-
-                if (piece) { pendingPointer = { sqIndex, piece, startX: e.clientX, startY: e.clientY }; return; }
-
-                deselect();
-                renderBoard(invert);
-            });
-
-            board.appendChild(div);
+                const newSrc = `assets/images/${piece}.svg`;
+                if (img.src !== newSrc) img.src = newSrc;
+                img.style.opacity = (dragState?.fromSq === sqIndex || animatingToSq === sqIndex) ? "0" : "";
+            } else if (img) {
+                img.remove();
+            }
         }
     }
+
+    board.querySelectorAll(".promo-backdrop, .promo-card, .gameover-panel").forEach(el => el.remove());
 
     if (pendingPromotion) {
         const { fromSq, toSq } = pendingPromotion;
@@ -198,10 +188,7 @@ function renderBoard(invert = false) {
         const backdrop = document.createElement("div");
         backdrop.className = "promo-backdrop";
         backdrop.addEventListener("pointerdown", e => {
-            e.stopPropagation();
-            pendingPromotion = null;
-            deselect();
-            renderBoard(invert);
+            e.stopPropagation(); pendingPromotion = null; deselect(); renderBoard(invert);
         });
 
         board.appendChild(backdrop);
@@ -218,13 +205,8 @@ function renderBoard(invert = false) {
             btn.appendChild(Object.assign(document.createElement("img"), { src: `assets/images/${side}${p}.svg`, className: "piece" }));
             btn.addEventListener("pointerdown", e => {
                 e.stopPropagation();
-
                 const uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}${p.toLowerCase()}`;
-                sendMove(uci);
-
-                pendingPromotion = null;
-                deselect();
-                renderBoard(invert);
+                sendMove(uci); pendingPromotion = null; deselect(); renderBoard(invert);
             });
 
             card.appendChild(btn);
@@ -233,6 +215,33 @@ function renderBoard(invert = false) {
         board.appendChild(card);
     }
 }
+
+board.addEventListener("pointerdown", e => {
+    const div = e.target.closest(".sq");
+    if (!div) return;
+    const sqIndex = parseInt(div.dataset.sq);
+
+    if (animating) return;
+    if (engine.side_to_move() !== color) return;
+    e.preventDefault();
+
+    const piece = engine.piece_on(sqIndex);
+
+    if (selectedSq !== null && legalTargets.includes(sqIndex)) {
+        const fromSq = selectedSq;
+        const mv = engine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === sqIndex);
+        if (!mv) return;
+        if (isPromotion(fromSq, sqIndex)) {
+            pendingPromotion = { fromSq, toSq: sqIndex };
+            deselect(); renderBoard(color === "b"); return;
+        }
+        sendMove(mv.to_uci()); deselect(); return;
+    }
+
+    if (piece) { pendingPointer = { sqIndex, piece, startX: e.clientX, startY: e.clientY }; return; }
+
+    deselect(); renderBoard(color === "b");
+});
 
 document.addEventListener("pointermove", e => {
     if (pendingPointer && !dragState) {
@@ -245,7 +254,7 @@ document.addEventListener("pointermove", e => {
 
         dragState = { fromSq: sqIndex, ghostEl: ghost };
         selectSquare(sqIndex);
-        renderBoard();
+        renderBoard(color === "b");
     }
 
     if (dragState) Object.assign(dragState.ghostEl.style, { left: e.clientX + "px", top: e.clientY + "px" });
@@ -256,7 +265,7 @@ document.addEventListener("pointerup", e => {
         const { sqIndex } = pendingPointer;
         pendingPointer = null;
         selectedSq === sqIndex ? deselect() : selectSquare(sqIndex);
-        renderBoard();
+        renderBoard(color === "b");
         return;
     }
 
@@ -272,7 +281,7 @@ document.addEventListener("pointerup", e => {
         if (isPromotion(fromSq, toSq)) {
             pendingPromotion = { fromSq, toSq };
             deselect();
-            renderBoard();
+            renderBoard(color === "b");
             return;
         }
 
@@ -282,7 +291,7 @@ document.addEventListener("pointerup", e => {
         deselect();
     }
 
-    renderBoard();
+    renderBoard(color === "b");
 });
 
-renderBoard();
+renderBoard(color === "b");

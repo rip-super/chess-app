@@ -243,12 +243,10 @@ impl ChessEngine {
         None
     }
 
-    #[cfg(feature = "server")]
     pub fn make_move(&mut self, mv: &ChessMove) -> Result<(), JsValue> {
         self.gs.make_move(mv.0).map_err(JsValue::from_str)
     }
 
-    #[cfg(feature = "server")]
     pub fn undo_move(&mut self) {
         self.gs.undo_move();
     }
