@@ -67,8 +67,18 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     game.white = ws; game.tokens[token] = "w";
                     ws.send(JSON.stringify({ type: "assign", color: "w" }));
                 } else if (!game.black) {
-                    game.black = ws; game.tokens[token] = "b";
-                    ws.send(JSON.stringify({ type: "assign", color: "b" }));
+                    if (Math.random() < 0.5) {
+                        game.tokens[token] = "w";
+                        const oldToken = Object.keys(game.tokens).find(t => game.tokens[t] === "w" && t !== token);
+                        if (oldToken) game.tokens[oldToken] = "b";
+                        game.black = game.white;
+                        game.white = ws;
+                        game.black.send(JSON.stringify({ type: "assign", color: "b" }));
+                        ws.send(JSON.stringify({ type: "assign", color: "w" }));
+                    } else {
+                        game.black = ws; game.tokens[token] = "b";
+                        ws.send(JSON.stringify({ type: "assign", color: "b" }));
+                    }
                 } else {
                     ws.send(JSON.stringify({ type: "error", msg: "game full" }));
                     return;

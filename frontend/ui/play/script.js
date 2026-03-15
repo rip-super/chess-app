@@ -51,6 +51,7 @@ ws.addEventListener("message", e => {
 
     if (msg.type === "assign") {
         color = msg.color;
+        renderBoard(color === "b");
         return;
     }
 
@@ -137,6 +138,8 @@ function checkGameOver(result) {
             <button class="gameover-btn" id="new-game-btn">New game</button>
         </div>
     `;
+
+    sessionStorage.removeItem("gameId");
 
     board.appendChild(panel);
 

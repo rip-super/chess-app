@@ -1,3 +1,6 @@
+const activeGame = sessionStorage.getItem("gameId");
+if (activeGame) window.location.href = `/play/${activeGame}`;
+
 const playBtn = document.getElementById("play-btn");
 const settingsBtn = document.getElementById("settings-btn");
 const statusText = document.getElementById("status");
@@ -11,6 +14,7 @@ playBtn.addEventListener("click", async () => {
         const data = await res.json();
 
         if (data.gameId && !data.waiting) {
+            sessionStorage.setItem("gameId", data.gameId);
             window.location.href = `/play/${data.gameId}`;
             return;
         }
@@ -23,6 +27,7 @@ playBtn.addEventListener("click", async () => {
                     const d = await r.json();
                     if (d.gameId) {
                         clearInterval(interval);
+                        sessionStorage.setItem("gameId", d.gameId);
                         window.location.href = `/play/${d.gameId}`;
                     } else if (d.error) {
                         clearInterval(interval);
@@ -47,5 +52,5 @@ playBtn.addEventListener("click", async () => {
 });
 
 settingsBtn.addEventListener("click", () => {
-    statusText.textContent = "Settings coming soon.";
+    statusText.textContent = "TODO: Settings";
 });
