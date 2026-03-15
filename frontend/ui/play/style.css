@@ -361,3 +361,9 @@ body {
 .draw-offer-banner .offer-btns .action-btn {
     flex: 1;
 }
+
+.gameover-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}

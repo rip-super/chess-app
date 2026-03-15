@@ -13,6 +13,7 @@ let pendingPromotion = null;
 let gameStarted = false;
 let moveHistory = [];
 let color = "w";
+let colorKnown = false;
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
@@ -104,6 +105,7 @@ ws.addEventListener("message", e => {
 
     if (msg.type === "assign") {
         color = msg.color;
+        colorKnown = true;
         renderBoard(color === "b");
         return;
     }
@@ -228,6 +230,7 @@ function checkGameOver(result) {
         </div>
         <div class="gameover-actions">
             <button class="gameover-btn" id="new-game-btn">New game</button>
+            <button class="gameover-btn" id="home-btn">Home</button>
         </div>
     `;
 
@@ -240,8 +243,12 @@ function checkGameOver(result) {
 
     document.getElementById("new-game-btn").addEventListener("pointerdown", e => {
         e.stopPropagation();
-        panel.remove();
         sessionStorage.setItem("autoplay", "1");
+        window.location.href = "/";
+    });
+
+    document.getElementById("home-btn").addEventListener("pointerdown", e => {
+        e.stopPropagation();
         window.location.href = "/";
     });
 }
@@ -275,17 +282,19 @@ function renderBoard(invert = false) {
             if (sqIndex === kingSq) div.classList.add("in-check");
 
             let img = div.querySelector("img.piece");
-            if (piece) {
-                if (!img) {
-                    img = document.createElement("img");
-                    img.className = "piece";
-                    div.appendChild(img);
+            if (colorKnown) {
+                if (piece) {
+                    if (!img) {
+                        img = document.createElement("img");
+                        img.className = "piece";
+                        div.appendChild(img);
+                    }
+                    const newSrc = `assets/images/${piece}.svg`;
+                    if (img.src !== newSrc) img.src = newSrc;
+                    img.style.opacity = (dragState?.fromSq === sqIndex || animatingToSq === sqIndex) ? "0" : "";
+                } else if (img) {
+                    img.remove();
                 }
-                const newSrc = `assets/images/${piece}.svg`;
-                if (img.src !== newSrc) img.src = newSrc;
-                img.style.opacity = (dragState?.fromSq === sqIndex || animatingToSq === sqIndex) ? "0" : "";
-            } else if (img) {
-                img.remove();
             }
         }
     }
@@ -407,3 +416,5 @@ document.addEventListener("pointerup", e => {
 
     renderBoard(color === "b");
 });
+
+renderBoard();

@@ -23,7 +23,7 @@ app.get("/match", (c) => {
     }
 
     const gameId = crypto.randomUUID();
-    games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {} });
+    games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {}, result: null });
     waitingPlayer = { gameId };
     console.log(`[match] waiting for opponent, game ${gameId}`);
     return c.json({ waiting: true, gameId });
@@ -46,7 +46,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
     return {
         onOpen() {
             if (!games.has(gameId)) {
-                games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {} });
+                games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {}, result: null });
             }
             console.log(`[${gameId}] websocket opened`);
         },
@@ -61,9 +61,14 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     const restoredColor = game.tokens[token];
                     if (restoredColor === "w") game.white = ws;
                     else game.black = ws;
-                    console.log(`[${gameId}] player reconnected as ${restoredColor}`);
+
                     ws.send(JSON.stringify({ type: "assign", color: restoredColor }));
                     ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen() }));
+
+                    if (game.result) {
+                        ws.send(JSON.stringify({ type: "game_over", result: game.result }));
+                    }
+
                     return;
                 }
 
@@ -107,7 +112,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             if (type === "resign") {
                 const resignColor = game.white === ws ? "w" : "b";
                 const result = resignColor === "w" ? "resign_white" : "resign_black";
-                console.log(`[${gameId}] ${resignColor} resigned`);
+                game.result = result;
                 const msg = JSON.stringify({ type: "game_over", result });
                 game.white?.send(msg);
                 game.black?.send(msg);
@@ -123,7 +128,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             }
 
             if (type === "draw_accepted") {
-                console.log(`[${gameId}] draw accepted`);
+                game.result = "draw_agreed";
                 const msg = JSON.stringify({ type: "game_over", result: "draw_agreed" });
                 game.white?.send(msg);
                 game.black?.send(msg);
