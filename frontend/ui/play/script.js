@@ -29,7 +29,7 @@ let token = sessionStorage.getItem("token");
 if (!token) { token = crypto.randomUUID(); sessionStorage.setItem("token", token); }
 
 const gameId = window.location.pathname.split("/").pop();
-const ws = new WebSocket(`ws://localhost:3000/ws/${gameId}`);
+const ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/${gameId}`);
 
 function sendMove(uci) {
     ws.send(JSON.stringify({ type: "move", uci }));
@@ -238,6 +238,7 @@ board.addEventListener("pointerdown", e => {
     if (!div) return;
     const sqIndex = parseInt(div.dataset.sq);
 
+    if (!gameStarted) return;
     if (animating) return;
     if (engine.side_to_move() !== color) return;
     e.preventDefault();
