@@ -95,6 +95,10 @@ impl ChessEngine {
         }
     }
 
+    pub fn get_fen(&self) -> String {
+        self.gs.position.to_fen()
+    }
+
     pub fn parse_uci(&self, input: &str) -> Option<ChessMove> {
         if input.len() < 4 {
             return None;

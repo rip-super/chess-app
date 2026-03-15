@@ -84,6 +84,16 @@ export class ChessEngine {
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
     }
+    /**
+     * @param {ChessMove} mv
+     */
+    make_move(mv) {
+        _assertClass(mv, ChessMove);
+        const ret = wasm.chessengine_make_move(this.__wbg_ptr, mv.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
     constructor() {
         const ret = wasm.chessengine_new();
         this.__wbg_ptr = ret >>> 0;
@@ -127,6 +137,9 @@ export class ChessEngine {
         } finally {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
+    }
+    undo_move() {
+        wasm.chessengine_undo_move(this.__wbg_ptr);
     }
 }
 if (Symbol.dispose) ChessEngine.prototype[Symbol.dispose] = ChessEngine.prototype.free;
@@ -252,6 +265,11 @@ function __wbg_get_imports() {
             const ret = ChessMove.__wrap(arg0);
             return ret;
         },
+        __wbindgen_cast_0000000000000001: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(String) -> Externref`.
+            const ret = getStringFromWasm0(arg0, arg1);
+            return ret;
+        },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
             const offset = table.grow(4);
@@ -274,6 +292,12 @@ const ChessEngineFinalization = (typeof FinalizationRegistry === 'undefined')
 const ChessMoveFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_chessmove_free(ptr >>> 0, 1));
+
+function _assertClass(instance, klass) {
+    if (!(instance instanceof klass)) {
+        throw new Error(`expected instance of ${klass.name}`);
+    }
+}
 
 function getArrayJsValueFromWasm0(ptr, len) {
     ptr = ptr >>> 0;
@@ -342,6 +366,12 @@ function passStringToWasm0(arg, malloc, realloc) {
 
     WASM_VECTOR_LEN = offset;
     return ptr;
+}
+
+function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_externrefs.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
 }
 
 let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });

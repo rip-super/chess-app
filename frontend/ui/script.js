@@ -1,6 +1,8 @@
 import init, { ChessEngine } from "./assets/wasm/wasm.js";
 
-let engine = null;
+await init();
+let engine = new ChessEngine();
+
 let selectedSq = null;
 let legalTargets = [];
 let dragState = null;
@@ -10,21 +12,10 @@ let animatingToSq = null;
 let pendingPromotion = null;
 
 const board = document.getElementById("board");
-
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
 
 function deselect() { selectedSq = null; legalTargets = []; }
 function selectSquare(sq) { selectedSq = sq; legalTargets = engine.legal_moves().filter(m => m.from_sq() === sq).map(m => m.to_sq()); }
-
-function makeMove(mv) {
-    engine.make_move(mv);
-    if (engine.game_result() !== "ongoing") { sfx("game_end"); return; }
-    if (mv.is_promotion()) { sfx("promote"); return; }
-    if (mv.is_capture()) { sfx("capture"); return; }
-    if (mv.is_castle()) { sfx("castle"); return }
-    if (engine.is_in_check()) { sfx("check"); return; }
-    else { sfx("move"); return; }
-}
 
 function isPromotion(fromSq, toSq) {
     const piece = engine.piece_on(fromSq);
@@ -32,8 +23,75 @@ function isPromotion(fromSq, toSq) {
     return Math.floor(toSq / 8) === 7 || Math.floor(toSq / 8) === 0;
 }
 
-function checkGameOver() {
-    const result = engine.game_result();
+const gameId = "test";
+const ws = new WebSocket(`ws://localhost:3000/ws/${gameId}`);
+
+function sendMove(uci) {
+    ws.send(JSON.stringify({ type: "move", uci }));
+}
+
+ws.addEventListener("message", e => {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === "error") {
+        console.warn("Move rejected:", msg.msg);
+        deselect();
+        renderBoard();
+        return;
+    }
+
+    if (msg.type === "sync") {
+        engine = ChessEngine.from_fen(msg.fen);
+        deselect();
+        renderBoard();
+        return;
+    }
+
+    if (msg.type === "move") {
+        const fromSq = uciToSq(msg.uci.slice(0, 2));
+        const toSq = uciToSq(msg.uci.slice(2, 4));
+        const pieceCode = engine.piece_on(fromSq);
+
+        const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
+        const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
+
+        engine = ChessEngine.from_fen(msg.fen);
+
+        if (msg.result !== "ongoing") sfx("game_end");
+        if (msg.isPromotion) sfx("promote");
+        if (msg.isCapture) sfx("capture");
+        if (msg.isCastle) sfx("castle");
+        if (msg.isCheck) sfx("check");
+        if (!msg.isCapture && !msg.isCastle && !msg.isPromotion) sfx("move");
+
+        deselect();
+        animatingToSq = toSq;
+        animating = true;
+        renderBoard();
+
+        const size = fromRect.width * 0.85;
+        const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
+
+        Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
+        document.body.appendChild(anim);
+
+        anim.getBoundingClientRect();
+
+        Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
+        anim.addEventListener("transitionend", () => {
+            anim.remove();
+            animating = false; animatingToSq = null;
+            renderBoard();
+            checkGameOver(msg.result);
+        }, { once: true });
+    }
+});
+
+function uciToSq(coord) {
+    return (parseInt(coord[1]) - 1) * 8 + (coord.charCodeAt(0) - 97);
+}
+
+function checkGameOver(result) {
     if (result === "ongoing") return;
 
     const msgs = {
@@ -63,11 +121,8 @@ function checkGameOver() {
 
     document.getElementById("new-game-btn").addEventListener("pointerdown", e => {
         e.stopPropagation();
-        engine = new ChessEngine();
-        deselect();
         panel.remove();
-        sfx("game_start");
-        renderBoard();
+        ws.send(JSON.stringify({ type: "new_game" }));
     });
 }
 
@@ -109,7 +164,6 @@ function renderBoard(invert = false) {
 
                 if (selectedSq !== null && legalTargets.includes(sqIndex)) {
                     const fromSq = selectedSq;
-                    const pieceCode = engine.piece_on(fromSq);
                     const mv = engine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === sqIndex);
                     if (!mv) return;
 
@@ -120,31 +174,8 @@ function renderBoard(invert = false) {
                         return;
                     }
 
-                    const fromRect = board.querySelector(`[data-sq="${fromSq}"]`).getBoundingClientRect();
-                    const toRect = div.getBoundingClientRect();
-
-                    makeMove(mv);
+                    sendMove(mv.to_uci());
                     deselect();
-                    animatingToSq = sqIndex;
-                    animating = true;
-                    renderBoard(invert);
-
-                    const size = fromRect.width * 0.85;
-                    const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
-
-                    Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
-                    document.body.appendChild(anim);
-
-                    anim.getBoundingClientRect();
-
-                    Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
-                    anim.addEventListener("transitionend", () => {
-                        anim.remove();
-                        animating = false; animatingToSq = null;
-                        renderBoard(invert);
-                        checkGameOver();
-                    }, { once: true });
-
                     return;
                 }
 
@@ -163,7 +194,6 @@ function renderBoard(invert = false) {
         const promoRank = Math.floor(toSq / 8);
         const promoFile = toSq % 8;
         const side = promoRank === 7 ? "w" : "b";
-        const promoList = ["Q", "R", "B", "N"];
 
         const backdrop = document.createElement("div");
         backdrop.className = "promo-backdrop";
@@ -182,7 +212,7 @@ function renderBoard(invert = false) {
         card.style.top = promoRank === 7 ? "0px" : "auto";
         card.style.bottom = promoRank === 0 ? "0px" : "auto";
 
-        promoList.forEach(p => {
+        ["Q", "R", "B", "N"].forEach(p => {
             const btn = document.createElement("div");
             btn.className = "promo-btn";
             btn.appendChild(Object.assign(document.createElement("img"), { src: `assets/images/${side}${p}.svg`, className: "piece" }));
@@ -190,12 +220,11 @@ function renderBoard(invert = false) {
                 e.stopPropagation();
 
                 const uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}${p.toLowerCase()}`;
-                const mv = engine.parse_uci(uci);
-                if (mv) makeMove(mv);
+                sendMove(uci);
 
                 pendingPromotion = null;
+                deselect();
                 renderBoard(invert);
-                checkGameOver();
             });
 
             card.appendChild(btn);
@@ -246,17 +275,14 @@ document.addEventListener("pointerup", e => {
             renderBoard();
             return;
         }
+
         const mv = engine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === toSq);
-        if (mv) { makeMove(mv); deselect(); }
+        if (mv) { sendMove(mv.to_uci()); deselect(); }
     } else {
         deselect();
     }
 
     renderBoard();
-    checkGameOver();
 });
 
-await init();
-engine = new ChessEngine();
-sfx("game_start").catch(() => { });
 renderBoard();
