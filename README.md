@@ -1,6 +1,19 @@
 this is a wip repo for my online chess app.
 
-as of right now, i have finished writing the chess engine itself in rust, and i have successfully converted it to wasm and you can use it in the broswer, and ive added a gui in which you can play the game. there is no online playing yet, but that is next on the todo list.
+# Completed Features
+- Bitboard Engine in Rust
+- Compiled to WASM
+- GUI to play
+- Matchmaking via WebSockets
+- Real Time Chess Playing
+
+# TODO
+- Live app at [https://chess.sahildash.dev](https://chess.sahildash.dev)
+- Settings page (chnage sounds, board, pieces
+- Username system
+- chat(?)
+- Time keeping
+- not slopped main page (mb for that guys)
 
 # Usage
 run the following commands to install and run the app so far.
@@ -9,7 +22,7 @@ run the following commands to install and run the app so far.
 git clone https://github.com/rip-super/chess-app.git
 cd chess-app
 cargo build -p wasm --release --target wasm32-unknown-unknown
-wasm-bindgen --target web --out-dir frontend/assets/wasm ./target/wasm32-unknown-unknown/release/wasm.wasm
+wasm-bindgen --target web --out-dir frontend/ui/wasm ./target/wasm32-unknown-unknown/release/wasm.wasm
 ```
 
 Note: you may need to add the wasm32-unknown-unknown target using rustup:
@@ -21,6 +34,9 @@ and you'll need to install the wasm-bindgen-cli:
 cargo install wasm-bindgen-cli
 ```
 
-Now just serve the frontend folder locally, you need to serve it, since just opening the file in the browser wont allow for the wasm to load.
+Now run the server:
+```
+cd frontend && node server.js
+```
 
-I personally use `npx serve frontend` but you can use any other static server like `http.server` in python or whatever.
+Go to `http://localhost:3000` and start playing!
