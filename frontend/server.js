@@ -17,23 +17,40 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
     const gameId = c.req.param("gameId");
 
     return {
-        onOpen(_, ws) {
+        onOpen() {
             if (!games.has(gameId)) {
-                games.set(gameId, { engine: new ChessEngine(), white: null, black: null });
+                games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {} });
             }
-            const game = games.get(gameId);
-
-            if (!game.white) { game.white = ws; ws.send(JSON.stringify({ type: "assign", color: "w" })); }
-            else if (!game.black) { game.black = ws; ws.send(JSON.stringify({ type: "assign", color: "b" })); }
-            else { ws.send(JSON.stringify({ type: "error", msg: "game full" })); return; }
-
-            ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen() }));
         },
 
         onMessage(evt, ws) {
-            const { type, uci } = JSON.parse(evt.data);
+            const { type, uci, token } = JSON.parse(evt.data);
             const game = games.get(gameId);
             if (!game) return;
+
+            if (type === "auth") {
+                if (game.tokens[token]) {
+                    const restoredColor = game.tokens[token];
+                    if (restoredColor === "w") game.white = ws;
+                    else game.black = ws;
+                    ws.send(JSON.stringify({ type: "assign", color: restoredColor }));
+                    ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen() }));
+                    return;
+                }
+
+                if (!game.white) {
+                    game.white = ws; game.tokens[token] = "w";
+                    ws.send(JSON.stringify({ type: "assign", color: "w" }));
+                } else if (!game.black) {
+                    game.black = ws; game.tokens[token] = "b";
+                    ws.send(JSON.stringify({ type: "assign", color: "b" }));
+                } else {
+                    ws.send(JSON.stringify({ type: "error", msg: "game full" }));
+                    return;
+                }
+                ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen() }));
+                return;
+            }
 
             if (type === "new_game") {
                 game.engine = new ChessEngine();
@@ -75,12 +92,15 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             }
         },
 
-        onClose() {
+        onClose(_, ws) {
             const game = games.get(gameId);
+
             if (!game) return;
             if (game.white === ws) game.white = null;
             if (game.black === ws) game.black = null;
-            if (!game.white && !game.black) games.delete(gameId);
+            if (!game.white && !game.black && game.engine.game_result() !== "ongoing") {
+                games.delete(gameId);
+            }
         }
     };
 }));

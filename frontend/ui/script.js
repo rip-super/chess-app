@@ -24,12 +24,19 @@ function isPromotion(fromSq, toSq) {
     return Math.floor(toSq / 8) === 7 || Math.floor(toSq / 8) === 0;
 }
 
+let token = sessionStorage.getItem("token");
+if (!token) { token = crypto.randomUUID(); sessionStorage.setItem("token", token); }
+
 const gameId = "test";
 const ws = new WebSocket(`ws://localhost:3000/ws/${gameId}`);
 
 function sendMove(uci) {
     ws.send(JSON.stringify({ type: "move", uci }));
 }
+
+ws.addEventListener("open", () => {
+    ws.send(JSON.stringify({ type: "auth", token }));
+});
 
 ws.addEventListener("message", e => {
     const msg = JSON.parse(e.data);
