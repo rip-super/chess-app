@@ -36,7 +36,9 @@ cargo install wasm-bindgen-cli
 
 Now run the server:
 ```
-cd frontend && node server.js
+cd frontend
+npm i
+node server.js
 ```
 
 Go to `http://localhost:3000` and start playing!
