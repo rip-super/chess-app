@@ -18,12 +18,14 @@ app.get("/match", (c) => {
     if (waitingPlayer) {
         const gameId = waitingPlayer.gameId;
         waitingPlayer = null;
+        console.log(`[match] paired into game ${gameId}`);
         return c.json({ gameId });
     }
 
     const gameId = crypto.randomUUID();
     games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {} });
     waitingPlayer = { gameId };
+    console.log(`[match] waiting for opponent, game ${gameId}`);
     return c.json({ waiting: true, gameId });
 });
 
@@ -46,6 +48,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             if (!games.has(gameId)) {
                 games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {} });
             }
+            console.log(`[${gameId}] websocket opened`);
         },
 
         onMessage(evt, ws) {
@@ -58,6 +61,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     const restoredColor = game.tokens[token];
                     if (restoredColor === "w") game.white = ws;
                     else game.black = ws;
+                    console.log(`[${gameId}] player reconnected as ${restoredColor}`);
                     ws.send(JSON.stringify({ type: "assign", color: restoredColor }));
                     ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen() }));
                     return;
@@ -65,6 +69,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
 
                 if (!game.white) {
                     game.white = ws; game.tokens[token] = "w";
+                    console.log(`[${gameId}] player joined as white`);
                     ws.send(JSON.stringify({ type: "assign", color: "w" }));
                 } else if (!game.black) {
                     if (Math.random() < 0.5) {
@@ -73,13 +78,16 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                         if (oldToken) game.tokens[oldToken] = "b";
                         game.black = game.white;
                         game.white = ws;
+                        console.log(`[${gameId}] player joined as white (colors swapped)`);
                         game.black.send(JSON.stringify({ type: "assign", color: "b" }));
                         ws.send(JSON.stringify({ type: "assign", color: "w" }));
                     } else {
                         game.black = ws; game.tokens[token] = "b";
+                        console.log(`[${gameId}] player joined as black`);
                         ws.send(JSON.stringify({ type: "assign", color: "b" }));
                     }
                 } else {
+                    console.warn(`[${gameId}] player tried to join full game`);
                     ws.send(JSON.stringify({ type: "error", msg: "game full" }));
                     return;
                 }
@@ -89,6 +97,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
 
             if (type === "new_game") {
                 game.engine = new ChessEngine();
+                console.log(`[${gameId}] new game started`);
                 const sync = JSON.stringify({ type: "sync", fen: game.engine.get_fen() });
                 game.white?.send(sync);
                 game.black?.send(sync);
@@ -101,15 +110,22 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             const isWhite = game.white === ws;
             const isBlack = game.black === ws;
             if ((sideToMove === "w" && !isWhite) || (sideToMove === "b" && !isBlack)) {
+                console.warn(`[${gameId}] out-of-turn move attempt: ${uci}`);
                 ws.send(JSON.stringify({ type: "error", msg: "not your turn" }));
                 return;
             }
 
             const mv = game.engine.parse_uci(uci);
-            if (!mv) return ws.send(JSON.stringify({ type: "error", msg: "invalid move" }));
+            if (!mv) {
+                console.warn(`[${gameId}] invalid uci: ${uci}`);
+                return ws.send(JSON.stringify({ type: "error", msg: "invalid move" }));
+            }
 
             try {
                 game.engine.make_move(mv);
+                const result = game.engine.game_result();
+                console.log(`[${gameId}] move ${uci} - result: ${result}`);
+
                 const msg = JSON.stringify({
                     type: "move",
                     fen: game.engine.get_fen(),
@@ -118,23 +134,26 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     isCastle: mv.is_castle(),
                     isPromotion: mv.is_promotion(),
                     isCheck: game.engine.is_in_check(),
-                    result: game.engine.game_result(),
+                    result,
                 });
+
                 game.white?.send(msg);
                 game.black?.send(msg);
-            } catch {
+            } catch (e) {
+                console.warn(`[${gameId}] illegal move attempt: ${uci}`);
                 ws.send(JSON.stringify({ type: "error", msg: "illegal move" }));
             }
         },
 
         onClose(_, ws) {
             const game = games.get(gameId);
-
             if (!game) return;
-            if (game.white === ws) game.white = null;
-            if (game.black === ws) game.black = null;
+
+            if (game.white === ws) { game.white = null; console.log(`[${gameId}] white disconnected`); }
+            if (game.black === ws) { game.black = null; console.log(`[${gameId}] black disconnected`); }
             if (!game.white && !game.black && game.engine.game_result() !== "ongoing") {
                 games.delete(gameId);
+                console.log(`[${gameId}] game cleaned up`);
             }
         }
     };
