@@ -6,10 +6,11 @@ this is a wip repo for my online chess app.
 - GUI to play
 - Matchmaking via WebSockets
 - Real Time Chess Playing
+- Live app at [https://chess.sahildash.dev](https://chess.sahildash.dev)
+- draw/resign buttons
 
 # TODO
-- Live app at [https://chess.sahildash.dev](https://chess.sahildash.dev)
-- Settings page (chnage sounds, board, pieces
+- Settings page (change sounds, board, pieces
 - Username system
 - chat(?)
 - Time keeping
