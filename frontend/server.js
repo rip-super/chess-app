@@ -14,30 +14,28 @@ const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 const games = new Map();
 let waitingPlayer = null;
 
-app.get("/match", async (c) => {
+app.get("/match", (c) => {
     if (waitingPlayer) {
         const gameId = waitingPlayer.gameId;
-        waitingPlayer.resolve();
         waitingPlayer = null;
         return c.json({ gameId });
     }
 
     const gameId = crypto.randomUUID();
     games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {} });
+    waitingPlayer = { gameId };
+    return c.json({ waiting: true, gameId });
+});
 
-    return new Promise(resolve => {
-        waitingPlayer = { gameId, resolve };
+app.get("/match/:gameId", (c) => {
+    const gameId = c.req.param("gameId");
 
-        setTimeout(() => {
-            if (waitingPlayer?.gameId === gameId) {
-                waitingPlayer = null;
-                games.delete(gameId);
-                resolve(c.json({ error: "timeout" }, 408));
-            }
-        }, 30000);
+    if (!waitingPlayer || waitingPlayer.gameId !== gameId) {
+        if (games.has(gameId)) return c.json({ gameId });
+        return c.json({ error: "expired" }, 404);
+    }
 
-        waitingPlayer.resolve = () => resolve(c.json({ gameId }));
-    });
+    return c.json({ waiting: true });
 });
 
 app.get("/ws/:gameId", upgradeWebSocket(c => {

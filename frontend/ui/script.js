@@ -4,21 +4,44 @@ const statusText = document.getElementById("status");
 
 playBtn.addEventListener("click", async () => {
     playBtn.disabled = true;
-    statusText.textContent = "Finding a game...";
+    statusText.innerHTML = "Finding a game<span class='dots'></span>";
 
     try {
         const res = await fetch("/match");
         const data = await res.json();
 
-        if (data.gameId) {
-            statusText.textContent = "Game found!";
+        if (data.gameId && !data.waiting) {
             window.location.href = `/play/${data.gameId}`;
-        } else {
-            statusText.textContent = "Timed out — try again.";
-            playBtn.disabled = false;
+            return;
+        }
+
+        if (data.waiting) {
+            const gameId = data.gameId;
+            const interval = setInterval(async () => {
+                try {
+                    const r = await fetch(`/match/${gameId}`);
+                    const d = await r.json();
+                    if (d.gameId) {
+                        clearInterval(interval);
+                        window.location.href = `/play/${d.gameId}`;
+                    } else if (d.error) {
+                        clearInterval(interval);
+                        statusText.textContent = "Timed out - try again.";
+                        playBtn.disabled = false;
+                    }
+                } catch { clearInterval(interval); playBtn.disabled = false; }
+            }, 500);
+
+            setTimeout(() => {
+                clearInterval(interval);
+                if (playBtn.disabled) {
+                    statusText.textContent = "Timed out - try again.";
+                    playBtn.disabled = false;
+                }
+            }, 30000);
         }
     } catch {
-        statusText.textContent = "Connection error — try again.";
+        statusText.textContent = "Connection error - try again.";
         playBtn.disabled = false;
     }
 });

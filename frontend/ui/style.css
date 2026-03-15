@@ -25,7 +25,6 @@ body {
     overflow: hidden;
 }
 
-/* subtle chess-grid background */
 .bg-grid {
     position: fixed;
     inset: 0;
@@ -130,6 +129,29 @@ main {
     letter-spacing: 0.06em;
     min-height: 1.2em;
     text-align: center;
+}
+
+.dots::after {
+    content: '';
+    animation: dots 3s steps(4, end) infinite;
+}
+
+@keyframes dots {
+    0% {
+        content: '';
+    }
+
+    25% {
+        content: '.';
+    }
+
+    50% {
+        content: '..';
+    }
+
+    75% {
+        content: '...';
+    }
 }
 
 @keyframes fadeUp {
