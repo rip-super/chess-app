@@ -104,6 +104,38 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                 return;
             }
 
+            if (type === "resign") {
+                const resignColor = game.white === ws ? "w" : "b";
+                const result = resignColor === "w" ? "resign_white" : "resign_black";
+                console.log(`[${gameId}] ${resignColor} resigned`);
+                const msg = JSON.stringify({ type: "game_over", result });
+                game.white?.send(msg);
+                game.black?.send(msg);
+                return;
+            }
+
+            if (type === "draw_offer") {
+                const opponent = game.white === ws ? game.black : game.white;
+                if (!opponent) return;
+                console.log(`[${gameId}] draw offered`);
+                opponent.send(JSON.stringify({ type: "draw_offer" }));
+                return;
+            }
+
+            if (type === "draw_accepted") {
+                console.log(`[${gameId}] draw accepted`);
+                const msg = JSON.stringify({ type: "game_over", result: "draw_agreed" });
+                game.white?.send(msg);
+                game.black?.send(msg);
+                return;
+            }
+
+            if (type === "draw_declined") {
+                const opponent = game.white === ws ? game.black : game.white;
+                opponent?.send(JSON.stringify({ type: "draw_declined" }));
+                return;
+            }
+
             if (type !== "move") return;
 
             const sideToMove = game.engine.side_to_move();

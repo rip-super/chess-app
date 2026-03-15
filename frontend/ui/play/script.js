@@ -11,10 +11,40 @@ let pendingPointer = null;
 let animatingToSq = null;
 let pendingPromotion = null;
 let gameStarted = false;
+let moveHistory = [];
 let color = "w";
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
+
+const moveLog = document.getElementById("move-log");
+const drawBtn = document.getElementById("draw-btn");
+const resignBtn = document.getElementById("resign-btn");
+const resignConfirm = document.getElementById("resign-confirm");
+const resignYes = document.getElementById("resign-yes");
+const resignNo = document.getElementById("resign-no");
+
+resignBtn.addEventListener("pointerdown", () => {
+    resignConfirm.classList.remove("hidden");
+    resignBtn.classList.add("hidden");
+});
+
+resignNo.addEventListener("pointerdown", () => {
+    resignConfirm.classList.add("hidden");
+    resignBtn.classList.remove("hidden");
+});
+
+resignYes.addEventListener("pointerdown", () => {
+    ws.send(JSON.stringify({ type: "resign" }));
+    resignConfirm.classList.add("hidden");
+    resignBtn.classList.remove("hidden");
+});
+
+drawBtn.addEventListener("pointerdown", () => {
+    ws.send(JSON.stringify({ type: "draw_offer" }));
+    drawBtn.disabled = true;
+    drawBtn.textContent = "Draw offered";
+});
 
 function deselect() { selectedSq = null; legalTargets = []; }
 function selectSquare(sq) { selectedSq = sq; legalTargets = engine.legal_moves().filter(m => m.from_sq() === sq).map(m => m.to_sq()); }
@@ -23,6 +53,29 @@ function isPromotion(fromSq, toSq) {
     const piece = engine.piece_on(fromSq);
     if (piece !== "wP" && piece !== "bP") return false;
     return Math.floor(toSq / 8) === 7 || Math.floor(toSq / 8) === 0;
+}
+
+function pushMove(uci) {
+    moveHistory.push(uci);
+    const i = moveHistory.length - 1;
+    if (i % 2 === 0) {
+        const pair = document.createElement("div");
+        pair.className = "move-pair";
+        pair.dataset.pair = Math.floor(i / 2);
+        pair.innerHTML = `
+            <span class="move-num">${Math.floor(i / 2) + 1}.</span>
+            <span class="move-entry" data-idx="${i}">${uci}</span>
+            <span class="move-entry" data-idx=""></span>
+        `;
+        moveLog.appendChild(pair);
+    } else {
+        const pair = moveLog.querySelector(`[data-pair="${Math.floor(i / 2)}"]`);
+        if (pair) {
+            const blank = pair.querySelector("[data-idx='']");
+            if (blank) { blank.textContent = uci; blank.dataset.idx = i; }
+        }
+    }
+    moveLog.scrollTop = moveLog.scrollHeight;
 }
 
 let token = localStorage.getItem("token");
@@ -80,6 +133,7 @@ ws.addEventListener("message", e => {
         else sfx("move");
 
         deselect();
+        pushMove(msg.uci);
 
         const fromSq = uciToSq(msg.uci.slice(0, 2));
         const toSq = uciToSq(msg.uci.slice(2, 4));
@@ -107,6 +161,41 @@ ws.addEventListener("message", e => {
             checkGameOver(msg.result);
         }, { once: true });
     }
+
+    if (msg.type === "draw_offer") {
+        const banner = document.createElement("div");
+        banner.className = "draw-offer-banner";
+        banner.innerHTML = `
+        <span>Draw offered</span>
+        <div class="offer-btns">
+            <button class="action-btn" id="draw-accept">Accept</button>
+            <button class="action-btn danger" id="draw-decline">Decline</button>
+        </div>
+    `;
+        document.getElementById("sidebar-actions").prepend(banner);
+
+        document.getElementById("draw-accept").addEventListener("pointerdown", () => {
+            ws.send(JSON.stringify({ type: "draw_accepted" }));
+            banner.remove();
+        });
+        document.getElementById("draw-decline").addEventListener("pointerdown", () => {
+            ws.send(JSON.stringify({ type: "draw_declined" }));
+            banner.remove();
+        });
+        return;
+    }
+
+    if (msg.type === "draw_declined") {
+        drawBtn.disabled = false;
+        drawBtn.textContent = "Draw";
+        return;
+    }
+
+    if (msg.type === "game_over") {
+        sfx("game_end");
+        checkGameOver(msg.result);
+        return;
+    }
 });
 
 function uciToSq(coord) {
@@ -123,6 +212,9 @@ function checkGameOver(result) {
         draw_repetition: { top: "Draw", bottom: "By Repetition" },
         draw_fifty_move: { top: "Draw", bottom: "By Fifty Move Rule" },
         draw_insufficient: { top: "Draw", bottom: "By Insufficient Material" },
+        resign_white: { top: "Resignation", bottom: "Black wins!" },
+        resign_black: { top: "Resignation", bottom: "White wins!" },
+        draw_agreed: { top: "Draw", bottom: "By Mutual Agreement" },
     };
 
     const { top, bottom } = msgs[result];
@@ -140,6 +232,9 @@ function checkGameOver(result) {
     `;
 
     localStorage.removeItem("gameId");
+
+    drawBtn.disabled = true;
+    resignBtn.disabled = true;
 
     board.appendChild(panel);
 

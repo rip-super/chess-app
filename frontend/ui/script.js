@@ -7,11 +7,6 @@ const playBtn = document.getElementById("play-btn");
 const settingsBtn = document.getElementById("settings-btn");
 const statusText = document.getElementById("status");
 
-if (sessionStorage.getItem("autoplay")) {
-    sessionStorage.removeItem("autoplay");
-    playBtn.click();
-}
-
 playBtn.addEventListener("click", async () => {
     playBtn.disabled = true;
     statusText.innerHTML = "Finding a game<span class='dots'></span>";
@@ -61,3 +56,8 @@ playBtn.addEventListener("click", async () => {
 settingsBtn.addEventListener("click", () => {
     statusText.textContent = "TODO: Settings";
 });
+
+if (sessionStorage.getItem("autoplay")) {
+    sessionStorage.removeItem("autoplay");
+    playBtn.click();
+}

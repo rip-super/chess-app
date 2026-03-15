@@ -10,7 +10,21 @@
 </head>
 
 <body>
-    <div id="board"></div>
+    <div id="game">
+        <div id="board"></div>
+        <div id="sidebar">
+            <div id="move-log"></div>
+            <div id="sidebar-actions">
+                <button class="action-btn" id="draw-btn">Draw</button>
+                <button class="action-btn danger" id="resign-btn">Resign</button>
+                <div id="resign-confirm" class="hidden">
+                    <span>Resign?</span>
+                    <button class="action-btn danger" id="resign-yes">Yes</button>
+                    <button class="action-btn" id="resign-no">No</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <script type="module" src="script.js"></script>
 </body>
 

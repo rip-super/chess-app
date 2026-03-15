@@ -216,3 +216,148 @@ body {
         transform: scaleY(1);
     }
 }
+
+#game {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+#sidebar {
+    width: 200px;
+    height: calc(var(--sq) * 8);
+    background: #141210;
+    border: 1px solid #2a2520;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#move-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: #3a3020 transparent;
+}
+
+.move-pair {
+    display: grid;
+    grid-template-columns: 28px 1fr 1fr;
+    gap: 2px;
+    align-items: center;
+    font-size: 0.72rem;
+    color: #c8bca8;
+}
+
+.move-pair .move-num {
+    color: #5a5040;
+    font-size: 0.68rem;
+}
+
+.move-pair .move-entry {
+    padding: 2px 4px;
+    border-radius: 2px;
+    cursor: default;
+}
+
+.move-pair .move-entry:hover {
+    background: #2a2520;
+}
+
+#sidebar-actions {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-top: 1px solid #2a2520;
+}
+
+.action-btn {
+    background: transparent;
+    border: 1px solid #3a3020;
+    color: #c8bca8;
+    font-family: monospace;
+    font-size: 0.72rem;
+    padding: 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    transition: border-color 0.12s, color 0.12s;
+    width: 100%;
+}
+
+.action-btn:hover {
+    border-color: #c9a84c;
+    color: #c9a84c;
+}
+
+.action-btn.danger:hover {
+    border-color: #c94c4c;
+    color: #c94c4c;
+}
+
+.action-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+}
+
+#resign-confirm {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: #c8bca8;
+    font-family: monospace;
+}
+
+#resign-confirm span {
+    flex: 1;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+#resign-confirm .action-btn {
+    width: auto;
+    padding: 5px 10px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.draw-offer-banner {
+    background: #1e1a14;
+    border: 1px solid #3a3020;
+    border-radius: 3px;
+    padding: 8px;
+    font-size: 0.7rem;
+    color: #c8bca8;
+    font-family: monospace;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.draw-offer-banner span {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8a7d6b;
+}
+
+.draw-offer-banner .offer-btns {
+    display: flex;
+    gap: 6px;
+}
+
+.draw-offer-banner .offer-btns .action-btn {
+    flex: 1;
+}
