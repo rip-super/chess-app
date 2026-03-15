@@ -25,8 +25,8 @@ function isPromotion(fromSq, toSq) {
     return Math.floor(toSq / 8) === 7 || Math.floor(toSq / 8) === 0;
 }
 
-let token = sessionStorage.getItem("token");
-if (!token) { token = crypto.randomUUID(); sessionStorage.setItem("token", token); }
+let token = localStorage.getItem("token");
+if (!token) { token = crypto.randomUUID(); localStorage.setItem("token", token); }
 
 const gameId = window.location.pathname.split("/").pop();
 const ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/${gameId}`);
@@ -139,14 +139,15 @@ function checkGameOver(result) {
         </div>
     `;
 
-    sessionStorage.removeItem("gameId");
+    localStorage.removeItem("gameId");
 
     board.appendChild(panel);
 
     document.getElementById("new-game-btn").addEventListener("pointerdown", e => {
         e.stopPropagation();
         panel.remove();
-        ws.send(JSON.stringify({ type: "new_game" }));
+        sessionStorage.setItem("autoplay", "1");
+        window.location.href = "/";
     });
 }
 
@@ -311,5 +312,3 @@ document.addEventListener("pointerup", e => {
 
     renderBoard(color === "b");
 });
-
-renderBoard(color === "b");

@@ -1,9 +1,16 @@
-const activeGame = sessionStorage.getItem("gameId");
-if (activeGame) window.location.href = `/play/${activeGame}`;
+window.addEventListener("pageshow", () => {
+    const activeGame = localStorage.getItem("gameId");
+    if (activeGame) window.location.href = `/play/${activeGame}`;
+});
 
 const playBtn = document.getElementById("play-btn");
 const settingsBtn = document.getElementById("settings-btn");
 const statusText = document.getElementById("status");
+
+if (sessionStorage.getItem("autoplay")) {
+    sessionStorage.removeItem("autoplay");
+    playBtn.click();
+}
 
 playBtn.addEventListener("click", async () => {
     playBtn.disabled = true;
@@ -14,7 +21,7 @@ playBtn.addEventListener("click", async () => {
         const data = await res.json();
 
         if (data.gameId && !data.waiting) {
-            sessionStorage.setItem("gameId", data.gameId);
+            localStorage.setItem("gameId", data.gameId);
             window.location.href = `/play/${data.gameId}`;
             return;
         }
@@ -27,7 +34,7 @@ playBtn.addEventListener("click", async () => {
                     const d = await r.json();
                     if (d.gameId) {
                         clearInterval(interval);
-                        sessionStorage.setItem("gameId", d.gameId);
+                        localStorage.setItem("gameId", d.gameId);
                         window.location.href = `/play/${d.gameId}`;
                     } else if (d.error) {
                         clearInterval(interval);
