@@ -229,7 +229,7 @@ impl ChessEngine {
             "b" => Color::Black,
             _ => return None,
         };
-        for sq in 0..64u8 {
+        for sq in 0..64 {
             if let Some((c, Piece::King)) = self.gs.position.piece_on(sq)
                 && c == target
             {
@@ -239,10 +239,12 @@ impl ChessEngine {
         None
     }
 
+    #[cfg(feature = "server")]
     pub fn make_move(&mut self, mv: &ChessMove) -> Result<(), JsValue> {
         self.gs.make_move(mv.0).map_err(JsValue::from_str)
     }
 
+    #[cfg(feature = "server")]
     pub fn undo_move(&mut self) {
         self.gs.undo_move();
     }

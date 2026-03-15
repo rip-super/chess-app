@@ -1,0 +1,20 @@
+{
+    "name": "chess-app",
+    "version": "1.0.0",
+    "description": "",
+    "license": "ISC",
+    "author": "",
+    "type": "module",
+    "main": "server.js",
+    "scripts": {
+        "dev": "nodemon server.js",
+        "start": "node server.js"
+    },
+    "devDependencies": {
+        "nodemon": "^3.1.14"
+    },
+    "dependencies": {
+        "@hono/node-server": "^1.19.11",
+        "hono": "^4.12.8"
+    }
+}

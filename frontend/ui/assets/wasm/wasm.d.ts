@@ -9,12 +9,10 @@ export class ChessEngine {
     is_in_check(): boolean;
     king_square(color: string): number | undefined;
     legal_moves(): any[];
-    make_move(mv: ChessMove): void;
     constructor();
     parse_uci(input: string): ChessMove | undefined;
     piece_on(square: number): string | undefined;
     side_to_move(): string;
-    undo_move(): void;
 }
 
 export class ChessMove {
@@ -45,12 +43,10 @@ export interface InitOutput {
     readonly chessengine_is_in_check: (a: number) => number;
     readonly chessengine_king_square: (a: number, b: number, c: number) => number;
     readonly chessengine_legal_moves: (a: number) => [number, number];
-    readonly chessengine_make_move: (a: number, b: number) => [number, number];
     readonly chessengine_new: () => number;
     readonly chessengine_parse_uci: (a: number, b: number, c: number) => number;
     readonly chessengine_piece_on: (a: number, b: number) => [number, number];
     readonly chessengine_side_to_move: (a: number) => [number, number];
-    readonly chessengine_undo_move: (a: number) => void;
     readonly chessmove_from_sq: (a: number) => number;
     readonly chessmove_is_capture: (a: number) => number;
     readonly chessmove_is_castle: (a: number) => number;
@@ -67,7 +63,6 @@ export interface InitOutput {
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __externref_drop_slice: (a: number, b: number) => void;
-    readonly __externref_table_dealloc: (a: number) => void;
     readonly __wbindgen_start: () => void;
 }
 
