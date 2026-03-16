@@ -1,14 +1,27 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
 
 :root {
-    --bg: #0f1318;
-    --text: #d9e4e8;
-    --muted: #5a7080;
+    --bg: #140f0c;
+    --text: #c8b89a;
+    --muted: #7a6a58;
+    --border: #2e2318;
     --accent: #7b9eb2;
-    --accent-hover: #d9e4e8;
-    --accent-glow: rgba(123, 158, 178, 0.3);
+    --accent-hover: #8fb4c8;
+    --accent-glow: rgba(123, 158, 178, 0.25);
     --accent-grid: rgba(123, 158, 178, 0.03);
-    --border: #1e2a32;
+    --bg-deep: #0a0806;
+    --bg-surface: #1e1710;
+    --bg-sidebar: #120e0a;
+    --border-strong: #3a2a18;
+    --border-deeper: #4a3828;
+    --text-mid: #a89878;
+    --text-dim: #4a3a28;
+    --accent-danger: #c94c4c;
+    --btn-secondary-bg: #7f5947;
+    --btn-secondary-bg-hover: #996a55;
+    --btn-secondary-border: #5a4030;
+    --shadow-text: rgba(0, 0, 0, 0.8);
+    --transition-fast: 0.15s ease;
 }
 
 *,
@@ -28,16 +41,19 @@ body {
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    user-select: none;
 }
 
 #bg-canvas {
     position: fixed;
     inset: 0;
-    width: 100%;
-    height: 100%;
+    width: 110%;
+    height: 110%;
     pointer-events: none;
     opacity: 0.4;
     filter: blur(3px);
+    left: -5%;
+    top: -5%;
 }
 
 main {
@@ -55,12 +71,8 @@ main {
     gap: 10px;
 }
 
-.title {
-    font-size: clamp(3rem, 10vw, 6rem);
-    font-weight: 700;
-    color: var(--text);
-    letter-spacing: 0.06em;
-    line-height: 1;
+img {
+    height: 20vh;
 }
 
 .subtitle {
@@ -80,13 +92,13 @@ main {
 .btn {
     width: 100%;
     padding: 13px 0;
-    font-family: "Source Code Pro", monospace;
+    font-family: "Inter", monospace;
     font-size: 0.8rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     border-radius: 6px;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all var(--transition-fast);
     position: relative;
     overflow: hidden;
 }
@@ -94,28 +106,23 @@ main {
 .btn-primary {
     background: var(--accent);
     border: 1px solid var(--accent);
-    color: var(--bg);
-    font-weight: 700;
+    color: var(--bg-deep);
 }
 
 .btn-primary:hover {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
     box-shadow: 0 4px 24px var(--accent-glow);
-    transform: translateY(-1px);
 }
 
 .btn-secondary {
-    background: #131820;
-    border: 1px solid #2a3a45;
+    background: var(--btn-secondary-bg);
+    border: 1px solid var(--btn-secondary-border);
     color: var(--text);
 }
 
 .btn-secondary:hover {
-    background: #1e2a35;
-    border-color: #5a7080;
-    color: var(--text);
-    transform: translateY(-1px);
+    background: var(--btn-secondary-bg-hover);
 }
 
 .btn:active {
@@ -134,7 +141,7 @@ main {
     letter-spacing: 0.06em;
     min-height: 1.2em;
     text-align: center;
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+    text-shadow: 0 1px 4px var(--shadow-text);
 }
 
 .dots::after {

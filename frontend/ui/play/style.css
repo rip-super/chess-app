@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap");
+
 :root {
     --sq: 10vh;
     --sq-light: #d9e4e8;
@@ -7,22 +9,26 @@
     --sq-check-inner: #ff0000aa;
     --sq-check-outer: #cc000066;
 
-    --bg: #0f1318;
-    --bg-deep: #080c10;
-    --bg-surface: #131820;
-    --bg-sidebar: #0d1116;
+    --bg: #140f0c;
+    --bg-deep: #0a0806;
+    --bg-surface: #1e1710;
+    --bg-sidebar: #120e0a;
 
-    --border: #1e2a32;
-    --border-strong: #2a3a45;
-    --border-deeper: #3a4d5a;
+    --border: #2e2318;
+    --border-strong: #3a2a18;
+    --border-deeper: #4a3828;
 
-    --text: #d9e4e8;
-    --text-mid: #a8bcc8;
-    --text-muted: #6a8090;
-    --text-dim: #405060;
+    --text: #c8b89a;
+    --text-mid: #a89878;
+    --text-muted: #7a6a58;
+    --text-dim: #4a3a28;
 
     --accent: #7b9eb2;
+    --accent-hover: #8fb4c8;
+    --accent-glow: rgba(123, 158, 178, 0.25);
     --accent-danger: #c94c4c;
+
+    --transition-fast: 0.15s ease;
 
     --shadow-board: 0 16px 48px rgba(0, 0, 0, 0.7);
     --shadow-panel: 0 16px 48px rgba(0, 0, 0, 0.8);
@@ -31,13 +37,15 @@
 }
 
 body {
-    font-family: monospace;
+    font-family: "Inter", monospace;
     min-height: 100vh;
     margin: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--bg);
+    color: var(--text);
+    user-select: none;
 }
 
 #board {
@@ -203,14 +211,14 @@ body {
     background: transparent;
     border: 1px solid var(--border-deeper);
     color: var(--text);
-    font-family: monospace;
+    font-family: "Inter", monospace;
     font-size: 0.78rem;
     padding: 7px 20px;
     border-radius: 3px;
     cursor: pointer;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    transition: border-color 0.12s, color 0.12s;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
 }
 
 .gameover-btn:hover {
@@ -289,14 +297,14 @@ body {
     background: transparent;
     border: 1px solid var(--border-strong);
     color: var(--text-mid);
-    font-family: monospace;
+    font-family: "Inter", monospace;
     font-size: 0.72rem;
     padding: 6px;
     border-radius: 3px;
     cursor: pointer;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    transition: border-color 0.12s, color 0.12s;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
 }
 
 .action-btn:hover {
@@ -321,7 +329,7 @@ body {
     gap: 6px;
     font-size: 0.72rem;
     color: var(--text-mid);
-    font-family: monospace;
+    font-family: "Inter", monospace;
 }
 
 #resign-confirm span {
@@ -343,7 +351,7 @@ body {
     padding: 8px;
     font-size: 0.7rem;
     color: var(--text-mid);
-    font-family: monospace;
+    font-family: "Inter", monospace;
     text-align: center;
     display: flex;
     flex-direction: column;
