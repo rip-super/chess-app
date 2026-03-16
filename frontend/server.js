@@ -59,6 +59,13 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             if (type === "auth") {
                 if (game.tokens[token]) {
                     const restoredColor = game.tokens[token];
+                    const existingWs = restoredColor === "w" ? game.white : game.black;
+
+                    if (existingWs && existingWs !== ws) {
+                        ws.send(JSON.stringify({ type: "error", msg: "already connected" }));
+                        return;
+                    }
+
                     if (restoredColor === "w") game.white = ws;
                     else game.black = ws;
 

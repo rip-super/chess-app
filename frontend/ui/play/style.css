@@ -8,6 +8,8 @@
     --sq-legal: rgba(0, 0, 0, 0.2);
     --sq-check-inner: #ff0000aa;
     --sq-check-outer: #cc000066;
+    --sq-last-move-light: #5ab5d0;
+    --sq-last-move-dark: #4a9ab8;
 
     --bg: #140f0c;
     --bg-deep: #0a0806;
@@ -106,8 +108,12 @@ body {
     z-index: 0;
 }
 
-.sq.last-move {
-    background-color: var(--sq-selected);
+.sq.light.last-move {
+    background-color: var(--sq-last-move-light);
+}
+
+.sq.dark.last-move {
+    background-color: var(--sq-last-move-dark);
 }
 
 .piece {

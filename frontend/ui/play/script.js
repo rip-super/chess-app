@@ -1,4 +1,4 @@
-// TODO: highlight last made move, arrows, premoves?, client reconnection, update board then send to server
+// TODO: arrows, premoves?, client reconnection
 
 import init, { ChessEngine } from "../wasm/wasm.js";
 
@@ -15,6 +15,8 @@ let pendingPromotion = null;
 let gameStarted = false;
 let moveHistory = [];
 let lastMove = null;
+let rollbackSnapshot = null;
+let pendingMoveRects = null;
 let color = "w";
 let colorKnown = false;
 
@@ -83,7 +85,7 @@ function pushMove(uci) {
 }
 
 function uciToSan(uci) {
-    const files = 'abcdefgh';
+    const files = "abcdefgh";
     const fromSq = uciToSq(uci.slice(0, 2));
     const toSq = uciToSq(uci.slice(2, 4));
     const promo = uci[4];
@@ -96,20 +98,20 @@ function uciToSan(uci) {
     const toRank = Math.floor(toSq / 8);
     const toCoord = files[toFile] + (toRank + 1);
 
-    if (pieceType === 'K') {
-        if (fromFile === 4 && toFile === 6) return 'O-O';
-        if (fromFile === 4 && toFile === 2) return 'O-O-O';
+    if (pieceType === "K") {
+        if (fromFile === 4 && toFile === 6) return "O-O";
+        if (fromFile === 4 && toFile === 2) return "O-O-O";
     }
 
     const isCapture = !!engine.piece_on(toSq);
-    const isEnPassant = pieceType === 'P' && fromFile !== toFile && !engine.piece_on(toSq);
+    const isEnPassant = pieceType === "P" && fromFile !== toFile && !engine.piece_on(toSq);
     const capture = isCapture || isEnPassant;
 
-    if (pieceType === 'P') {
-        let san = '';
-        if (capture) san += files[fromFile] + 'x';
+    if (pieceType === "P") {
+        let san = "";
+        if (capture) san += files[fromFile] + "x";
         san += toCoord;
-        if (promo) san += '=' + promo.toUpperCase();
+        if (promo) san += "=" + promo.toUpperCase();
         return san;
     }
 
@@ -119,7 +121,7 @@ function uciToSan(uci) {
         engine.piece_on(m.from_sq()) === piece
     );
 
-    let disambig = '';
+    let disambig = "";
     if (ambiguous.length > 0) {
         const sameFile = ambiguous.some(m => m.from_sq() % 8 === fromFile);
         const sameRank = ambiguous.some(m => Math.floor(m.from_sq() / 8) === fromRank);
@@ -129,7 +131,7 @@ function uciToSan(uci) {
     }
 
     let san = pieceType + disambig;
-    if (capture) san += 'x';
+    if (capture) san += "x";
     san += toCoord;
     return san;
 }
@@ -141,6 +143,51 @@ const gameId = window.location.pathname.split("/").pop();
 const ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/${gameId}`);
 
 function sendMove(uci) {
+    const mv = engine.parse_uci(uci);
+    if (!mv) return;
+
+    const fromSq = uciToSq(uci.slice(0, 2));
+    const toSq = uciToSq(uci.slice(2, 4));
+
+    const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
+    const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
+    const pieceCode = engine.piece_on(fromSq);
+
+    rollbackSnapshot = { fen: engine.get_fen(), lastMove, moveHistory: [...moveHistory] };
+
+    let san = uciToSan(uci);
+    engine.make_move(mv);
+    san += engine.is_in_check() ? "+" : "";
+
+    lastMove = { from: fromSq, to: toSq };
+    pushMove(san);
+    deselect();
+
+    if (engine.is_in_check()) sfx("check");
+    else if (mv.is_promotion()) sfx("promote");
+    else if (mv.is_castle()) sfx("castle");
+    else if (mv.is_capture()) sfx("capture");
+    else sfx("move");
+
+    animatingToSq = toSq;
+    animating = true;
+    renderBoard(color === "b");
+
+    const size = fromRect.width * 0.85;
+    const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
+
+    Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
+    document.body.appendChild(anim);
+
+    anim.getBoundingClientRect();
+
+    Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
+    anim.addEventListener("transitionend", () => {
+        anim.remove();
+        animating = false; animatingToSq = null;
+        renderBoard(color === "b");
+    }, { once: true });
+
     ws.send(JSON.stringify({ type: "move", uci }));
 }
 
@@ -153,6 +200,25 @@ ws.addEventListener("message", e => {
 
     if (msg.type === "error") {
         console.warn("Move rejected:", msg.msg);
+
+        if (rollbackSnapshot) {
+            engine = ChessEngine.from_fen(rollbackSnapshot.fen);
+            lastMove = rollbackSnapshot.lastMove;
+            moveHistory = rollbackSnapshot.moveHistory;
+
+            const lastPair = moveLog.lastElementChild;
+            if (lastPair) {
+                const entries = lastPair.querySelectorAll(".move-entry");
+                const lastFilled = [...entries].reverse().find(e => e.textContent);
+                if (lastFilled) {
+                    if (lastFilled.dataset.idx % 2 === 0) lastPair.remove();
+                    else lastFilled.textContent = "";
+                }
+            }
+
+            rollbackSnapshot = null;
+        }
+
         deselect();
         renderBoard(color === "b");
         return;
@@ -179,50 +245,66 @@ ws.addEventListener("message", e => {
     }
 
     if (msg.type === "move") {
-        const mv = engine.parse_uci(msg.uci);
-        let san = mv ? uciToSan(msg.uci) : msg.uci;
-        if (mv) engine.make_move(mv);
+        const isOwnMove = rollbackSnapshot !== null;
+        rollbackSnapshot = null;
 
-        if (msg.result === "checkmate_white" || msg.result === "checkmate_black") san += "#";
-        else if (msg.isCheck) san += "+";
+        if (!isOwnMove) {
+            const mv = engine.parse_uci(msg.uci);
+            let san = mv ? uciToSan(msg.uci) : msg.uci;
 
-        if (msg.result !== "ongoing") sfx("game_end");
-        else if (msg.isCheck) sfx("check");
-        else if (msg.isPromotion) sfx("promote");
-        else if (msg.isCastle) sfx("castle");
-        else if (msg.isCapture) sfx("capture");
-        else sfx("move");
+            if (mv) engine.make_move(mv);
+            if (msg.result === "checkmate_white" || msg.result === "checkmate_black") san += "#";
+            else if (msg.isCheck) san += "+";
 
-        deselect();
-        pushMove(san);
+            pushMove(san);
+            lastMove = { from: uciToSq(msg.uci.slice(0, 2)), to: uciToSq(msg.uci.slice(2, 4)) };
 
-        const fromSq = uciToSq(msg.uci.slice(0, 2));
-        const toSq = uciToSq(msg.uci.slice(2, 4));
-        const pieceCode = engine.piece_on(toSq);
-        const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
-        const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
+            if (msg.result !== "ongoing") sfx("game_end");
+            else if (msg.isCheck) sfx("check");
+            else if (msg.isPromotion) sfx("promote");
+            else if (msg.isCastle) sfx("castle");
+            else if (msg.isCapture) sfx("capture");
+            else sfx("move");
 
-        lastMove = { from: fromSq, to: toSq };
+            deselect();
 
-        animatingToSq = toSq;
-        animating = true;
-        renderBoard(color === "b");
+            const fromSq = uciToSq(msg.uci.slice(0, 2));
+            const toSq = uciToSq(msg.uci.slice(2, 4));
+            const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
+            const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
+            const pieceCode = engine.piece_on(toSq);
 
-        const size = fromRect.width * 0.85;
-        const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
-
-        Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
-        document.body.appendChild(anim);
-
-        anim.getBoundingClientRect();
-
-        Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
-        anim.addEventListener("transitionend", () => {
-            anim.remove();
-            animating = false; animatingToSq = null;
+            animatingToSq = toSq;
+            animating = true;
             renderBoard(color === "b");
+
+            const size = fromRect.width * 0.85;
+            const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
+
+            Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
+            document.body.appendChild(anim);
+
+            anim.getBoundingClientRect();
+
+            Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
+            anim.addEventListener("transitionend", () => {
+                anim.remove();
+                animating = false; animatingToSq = null;
+                renderBoard(color === "b");
+                checkGameOver(msg.result);
+            }, { once: true });
+        } else {
+            if (moveHistory.length > 0) {
+                const lastIdx = moveHistory.length - 1;
+                const correctSuffix = (msg.result === "checkmate_white" || msg.result === "checkmate_black") ? "#" : msg.isCheck ? "+" : "";
+                moveHistory[lastIdx] = moveHistory[lastIdx].replace(/[+#]?$/, correctSuffix);
+                const entry = moveLog.querySelector(`[data-idx="${lastIdx}"]`);
+                if (entry) entry.textContent = moveHistory[lastIdx];
+            }
+
+            if (msg.result !== "ongoing") sfx("game_end");
             checkGameOver(msg.result);
-        }, { once: true });
+        }
     }
 
     if (msg.type === "draw_offer") {
