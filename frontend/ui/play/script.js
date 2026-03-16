@@ -1,4 +1,4 @@
-// TODO: highlight last made move, arrows
+// TODO: highlight last made move, arrows, premoves?, client reconnection, update board then send to server
 
 import init, { ChessEngine } from "../wasm/wasm.js";
 
@@ -14,6 +14,7 @@ let animatingToSq = null;
 let pendingPromotion = null;
 let gameStarted = false;
 let moveHistory = [];
+let lastMove = null;
 let color = "w";
 let colorKnown = false;
 
@@ -81,6 +82,58 @@ function pushMove(uci) {
     moveLog.scrollTop = moveLog.scrollHeight;
 }
 
+function uciToSan(uci) {
+    const files = 'abcdefgh';
+    const fromSq = uciToSq(uci.slice(0, 2));
+    const toSq = uciToSq(uci.slice(2, 4));
+    const promo = uci[4];
+
+    const piece = engine.piece_on(fromSq);
+    const pieceType = piece[1];
+    const fromFile = fromSq % 8;
+    const fromRank = Math.floor(fromSq / 8);
+    const toFile = toSq % 8;
+    const toRank = Math.floor(toSq / 8);
+    const toCoord = files[toFile] + (toRank + 1);
+
+    if (pieceType === 'K') {
+        if (fromFile === 4 && toFile === 6) return 'O-O';
+        if (fromFile === 4 && toFile === 2) return 'O-O-O';
+    }
+
+    const isCapture = !!engine.piece_on(toSq);
+    const isEnPassant = pieceType === 'P' && fromFile !== toFile && !engine.piece_on(toSq);
+    const capture = isCapture || isEnPassant;
+
+    if (pieceType === 'P') {
+        let san = '';
+        if (capture) san += files[fromFile] + 'x';
+        san += toCoord;
+        if (promo) san += '=' + promo.toUpperCase();
+        return san;
+    }
+
+    const ambiguous = engine.legal_moves().filter(m =>
+        m.to_sq() === toSq &&
+        m.from_sq() !== fromSq &&
+        engine.piece_on(m.from_sq()) === piece
+    );
+
+    let disambig = '';
+    if (ambiguous.length > 0) {
+        const sameFile = ambiguous.some(m => m.from_sq() % 8 === fromFile);
+        const sameRank = ambiguous.some(m => Math.floor(m.from_sq() / 8) === fromRank);
+        if (!sameFile) disambig = files[fromFile];
+        else if (!sameRank) disambig = (fromRank + 1).toString();
+        else disambig = files[fromFile] + (fromRank + 1);
+    }
+
+    let san = pieceType + disambig;
+    if (capture) san += 'x';
+    san += toCoord;
+    return san;
+}
+
 let token = localStorage.getItem("token");
 if (!token) { token = crypto.randomUUID(); localStorage.setItem("token", token); }
 
@@ -127,7 +180,11 @@ ws.addEventListener("message", e => {
 
     if (msg.type === "move") {
         const mv = engine.parse_uci(msg.uci);
+        let san = mv ? uciToSan(msg.uci) : msg.uci;
         if (mv) engine.make_move(mv);
+
+        if (msg.result === "checkmate_white" || msg.result === "checkmate_black") san += "#";
+        else if (msg.isCheck) san += "+";
 
         if (msg.result !== "ongoing") sfx("game_end");
         else if (msg.isCheck) sfx("check");
@@ -137,13 +194,15 @@ ws.addEventListener("message", e => {
         else sfx("move");
 
         deselect();
-        pushMove(msg.uci);
+        pushMove(san);
 
         const fromSq = uciToSq(msg.uci.slice(0, 2));
         const toSq = uciToSq(msg.uci.slice(2, 4));
         const pieceCode = engine.piece_on(toSq);
         const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
         const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
+
+        lastMove = { from: fromSq, to: toSq };
 
         animatingToSq = toSq;
         animating = true;
@@ -282,6 +341,7 @@ function renderBoard(invert = false) {
             if (sqIndex === selectedSq) div.classList.add("selected");
             if (legalTargets.includes(sqIndex)) div.classList.add(piece ? "legal-capture" : "legal");
             if (sqIndex === kingSq) div.classList.add("in-check");
+            if (lastMove && (sqIndex === lastMove.from || sqIndex === lastMove.to)) div.classList.add("last-move");
 
             let img = div.querySelector("img.piece");
             if (colorKnown) {

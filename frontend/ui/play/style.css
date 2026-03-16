@@ -4,7 +4,7 @@
     --sq: 10vh;
     --sq-light: #d9e4e8;
     --sq-dark: #7b9eb2;
-    --sq-selected: #f6f669aa;
+    --sq-selected: #6cbad2;
     --sq-legal: rgba(0, 0, 0, 0.2);
     --sq-check-inner: #ff0000aa;
     --sq-check-outer: #cc000066;
@@ -104,6 +104,10 @@ body {
     background: radial-gradient(circle, var(--sq-check-inner) 0%, var(--sq-check-outer) 60%, transparent 90%);
     pointer-events: none;
     z-index: 0;
+}
+
+.sq.last-move {
+    background-color: var(--sq-selected);
 }
 
 .piece {
