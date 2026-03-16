@@ -1,5 +1,7 @@
 this is a wip repo for my online chess app.
 
+Currently live [here!](https://chess.sahildash.dev) (if the dev server is running lol)
+
 # Completed Features
 - Bitboard Engine in Rust
 - Compiled to WASM
@@ -8,13 +10,13 @@ this is a wip repo for my online chess app.
 - Real Time Chess Playing
 - Live app at [https://chess.sahildash.dev](https://chess.sahildash.dev)
 - draw/resign buttons
+- cooking home page (if i do say so myself)
 
 # TODO
 - Settings page (change sounds, board, pieces
 - Username system
 - chat(?)
 - Time keeping
-- not slopped main page (mb for that guys)
 
 # Usage
 run the following commands to install and run the app so far.
