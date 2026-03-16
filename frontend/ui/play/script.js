@@ -1,4 +1,4 @@
-// TODO: arrows, premoves?, client reconnection
+// TODO: arrows, premoves?
 
 import init, { ChessEngine } from "../wasm/wasm.js";
 
@@ -16,7 +16,6 @@ let gameStarted = false;
 let moveHistory = [];
 let lastMove = null;
 let rollbackSnapshot = null;
-let pendingMoveRects = null;
 let color = "w";
 let colorKnown = false;
 
@@ -29,6 +28,7 @@ const resignBtn = document.getElementById("resign-btn");
 const resignConfirm = document.getElementById("resign-confirm");
 const resignYes = document.getElementById("resign-yes");
 const resignNo = document.getElementById("resign-no");
+const connStatus = document.getElementById("connection-status");
 
 resignBtn.addEventListener("pointerdown", () => {
     resignConfirm.classList.remove("hidden");
@@ -140,7 +140,6 @@ let token = localStorage.getItem("token");
 if (!token) { token = crypto.randomUUID(); localStorage.setItem("token", token); }
 
 const gameId = window.location.pathname.split("/").pop();
-const ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/${gameId}`);
 
 function sendMove(uci) {
     const mv = engine.parse_uci(uci);
@@ -191,157 +190,171 @@ function sendMove(uci) {
     ws.send(JSON.stringify({ type: "move", uci }));
 }
 
-ws.addEventListener("open", () => {
-    ws.send(JSON.stringify({ type: "auth", token }));
-});
+function connect() {
+    const socket = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/${gameId}`);
 
-ws.addEventListener("message", e => {
-    const msg = JSON.parse(e.data);
+    socket.addEventListener("open", () => {
+        connStatus.classList.add("hidden");
+        socket.send(JSON.stringify({ type: "auth", token }));
+    });
 
-    if (msg.type === "error") {
-        console.warn("Move rejected:", msg.msg);
+    socket.addEventListener("close", () => {
+        connStatus.classList.remove("hidden");
+        setTimeout(() => { ws = connect(); }, 2000);
+    });
 
-        if (rollbackSnapshot) {
-            engine = ChessEngine.from_fen(rollbackSnapshot.fen);
-            lastMove = rollbackSnapshot.lastMove;
-            moveHistory = rollbackSnapshot.moveHistory;
+    socket.addEventListener("message", e => {
+        const msg = JSON.parse(e.data);
 
-            const lastPair = moveLog.lastElementChild;
-            if (lastPair) {
-                const entries = lastPair.querySelectorAll(".move-entry");
-                const lastFilled = [...entries].reverse().find(e => e.textContent);
-                if (lastFilled) {
-                    if (lastFilled.dataset.idx % 2 === 0) lastPair.remove();
-                    else lastFilled.textContent = "";
+        if (msg.type === "error") {
+            console.warn("Move rejected:", msg.msg);
+
+            if (rollbackSnapshot) {
+                engine = ChessEngine.from_fen(rollbackSnapshot.fen);
+                lastMove = rollbackSnapshot.lastMove;
+                moveHistory = rollbackSnapshot.moveHistory;
+
+                const lastPair = moveLog.lastElementChild;
+                if (lastPair) {
+                    const entries = lastPair.querySelectorAll(".move-entry");
+                    const lastFilled = [...entries].reverse().find(e => e.textContent);
+                    if (lastFilled) {
+                        if (lastFilled.dataset.idx % 2 === 0) lastPair.remove();
+                        else lastFilled.textContent = "";
+                    }
                 }
+
+                rollbackSnapshot = null;
             }
-
-            rollbackSnapshot = null;
-        }
-
-        deselect();
-        renderBoard(color === "b");
-        return;
-    }
-
-    if (msg.type === "assign") {
-        color = msg.color;
-        colorKnown = true;
-        renderBoard(color === "b");
-        return;
-    }
-
-    if (msg.type === "sync") {
-        engine = ChessEngine.from_fen(msg.fen);
-        deselect();
-
-        if (!gameStarted) {
-            gameStarted = true;
-            sfx("game_start").catch(() => { });
-        }
-
-        renderBoard(color === "b");
-        return;
-    }
-
-    if (msg.type === "move") {
-        const isOwnMove = rollbackSnapshot !== null;
-        rollbackSnapshot = null;
-
-        if (!isOwnMove) {
-            const mv = engine.parse_uci(msg.uci);
-            let san = mv ? uciToSan(msg.uci) : msg.uci;
-
-            if (mv) engine.make_move(mv);
-            if (msg.result === "checkmate_white" || msg.result === "checkmate_black") san += "#";
-            else if (msg.isCheck) san += "+";
-
-            pushMove(san);
-            lastMove = { from: uciToSq(msg.uci.slice(0, 2)), to: uciToSq(msg.uci.slice(2, 4)) };
-
-            if (msg.result !== "ongoing") sfx("game_end");
-            else if (msg.isCheck) sfx("check");
-            else if (msg.isPromotion) sfx("promote");
-            else if (msg.isCastle) sfx("castle");
-            else if (msg.isCapture) sfx("capture");
-            else sfx("move");
 
             deselect();
-
-            const fromSq = uciToSq(msg.uci.slice(0, 2));
-            const toSq = uciToSq(msg.uci.slice(2, 4));
-            const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
-            const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
-            const pieceCode = engine.piece_on(toSq);
-
-            animatingToSq = toSq;
-            animating = true;
             renderBoard(color === "b");
+            return;
+        }
 
-            const size = fromRect.width * 0.85;
-            const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
+        if (msg.type === "assign") {
+            color = msg.color;
+            colorKnown = true;
+            renderBoard(color === "b");
+            return;
+        }
 
-            Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
-            document.body.appendChild(anim);
+        if (msg.type === "sync") {
+            engine = ChessEngine.from_fen(msg.fen);
+            deselect();
 
-            anim.getBoundingClientRect();
-
-            Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
-            anim.addEventListener("transitionend", () => {
-                anim.remove();
-                animating = false; animatingToSq = null;
-                renderBoard(color === "b");
-                checkGameOver(msg.result);
-            }, { once: true });
-        } else {
-            if (moveHistory.length > 0) {
-                const lastIdx = moveHistory.length - 1;
-                const correctSuffix = (msg.result === "checkmate_white" || msg.result === "checkmate_black") ? "#" : msg.isCheck ? "+" : "";
-                moveHistory[lastIdx] = moveHistory[lastIdx].replace(/[+#]?$/, correctSuffix);
-                const entry = moveLog.querySelector(`[data-idx="${lastIdx}"]`);
-                if (entry) entry.textContent = moveHistory[lastIdx];
+            if (!gameStarted) {
+                gameStarted = true;
+                sfx("game_start").catch(() => { });
             }
 
-            if (msg.result !== "ongoing") sfx("game_end");
-            checkGameOver(msg.result);
+            renderBoard(color === "b");
+            return;
         }
-    }
 
-    if (msg.type === "draw_offer") {
-        const banner = document.createElement("div");
-        banner.className = "draw-offer-banner";
-        banner.innerHTML = `
-        <span>Draw offered</span>
-        <div class="offer-btns">
-            <button class="action-btn" id="draw-accept">Accept</button>
-            <button class="action-btn danger" id="draw-decline">Decline</button>
-        </div>
-    `;
-        document.getElementById("sidebar-actions").prepend(banner);
+        if (msg.type === "move") {
+            const isOwnMove = rollbackSnapshot !== null;
+            rollbackSnapshot = null;
 
-        document.getElementById("draw-accept").addEventListener("pointerdown", () => {
-            ws.send(JSON.stringify({ type: "draw_accepted" }));
-            banner.remove();
-        });
-        document.getElementById("draw-decline").addEventListener("pointerdown", () => {
-            ws.send(JSON.stringify({ type: "draw_declined" }));
-            banner.remove();
-        });
-        return;
-    }
+            if (!isOwnMove) {
+                const mv = engine.parse_uci(msg.uci);
+                let san = mv ? uciToSan(msg.uci) : msg.uci;
 
-    if (msg.type === "draw_declined") {
-        drawBtn.disabled = false;
-        drawBtn.textContent = "Draw";
-        return;
-    }
+                if (mv) engine.make_move(mv);
+                if (msg.result === "checkmate_white" || msg.result === "checkmate_black") san += "#";
+                else if (msg.isCheck) san += "+";
 
-    if (msg.type === "game_over") {
-        sfx("game_end");
-        checkGameOver(msg.result);
-        return;
-    }
-});
+                pushMove(san);
+                lastMove = { from: uciToSq(msg.uci.slice(0, 2)), to: uciToSq(msg.uci.slice(2, 4)) };
+
+                if (msg.result !== "ongoing") sfx("game_end");
+                else if (msg.isCheck) sfx("check");
+                else if (msg.isPromotion) sfx("promote");
+                else if (msg.isCastle) sfx("castle");
+                else if (msg.isCapture) sfx("capture");
+                else sfx("move");
+
+                deselect();
+
+                const fromSq = uciToSq(msg.uci.slice(0, 2));
+                const toSq = uciToSq(msg.uci.slice(2, 4));
+                const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
+                const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
+                const pieceCode = engine.piece_on(toSq);
+
+                animatingToSq = toSq;
+                animating = true;
+                renderBoard(color === "b");
+
+                const size = fromRect.width * 0.85;
+                const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
+
+                Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
+                document.body.appendChild(anim);
+
+                anim.getBoundingClientRect();
+
+                Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
+                anim.addEventListener("transitionend", () => {
+                    anim.remove();
+                    animating = false; animatingToSq = null;
+                    renderBoard(color === "b");
+                    checkGameOver(msg.result);
+                }, { once: true });
+            } else {
+                if (moveHistory.length > 0) {
+                    const lastIdx = moveHistory.length - 1;
+                    const correctSuffix = (msg.result === "checkmate_white" || msg.result === "checkmate_black") ? "#" : msg.isCheck ? "+" : "";
+                    moveHistory[lastIdx] = moveHistory[lastIdx].replace(/[+#]?$/, correctSuffix);
+                    const entry = moveLog.querySelector(`[data-idx="${lastIdx}"]`);
+                    if (entry) entry.textContent = moveHistory[lastIdx];
+                }
+
+                if (msg.result !== "ongoing") sfx("game_end");
+                checkGameOver(msg.result);
+            }
+        }
+
+        if (msg.type === "draw_offer") {
+            const banner = document.createElement("div");
+            banner.className = "draw-offer-banner";
+            banner.innerHTML = `
+            <span>Draw offered</span>
+            <div class="offer-btns">
+                <button class="action-btn" id="draw-accept">Accept</button>
+                <button class="action-btn danger" id="draw-decline">Decline</button>
+            </div>
+        `;
+            document.getElementById("sidebar-actions").prepend(banner);
+
+            document.getElementById("draw-accept").addEventListener("pointerdown", () => {
+                ws.send(JSON.stringify({ type: "draw_accepted" }));
+                banner.remove();
+            });
+            document.getElementById("draw-decline").addEventListener("pointerdown", () => {
+                ws.send(JSON.stringify({ type: "draw_declined" }));
+                banner.remove();
+            });
+            return;
+        }
+
+        if (msg.type === "draw_declined") {
+            drawBtn.disabled = false;
+            drawBtn.textContent = "Draw";
+            return;
+        }
+
+        if (msg.type === "game_over") {
+            sfx("game_end");
+            checkGameOver(msg.result);
+            return;
+        }
+    });
+
+    return socket;
+}
+
+let ws = connect();
 
 function uciToSq(coord) {
     return (parseInt(coord[1]) - 1) * 8 + (coord.charCodeAt(0) - 97);
