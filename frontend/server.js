@@ -8,6 +8,8 @@ import init, { ChessEngine } from "./ui/wasm/wasm.js";
 const wasm = await readFile(new URL("./ui/wasm/wasm_bg.wasm", import.meta.url));
 await init({ module_or_path: wasm });
 
+const ABANDON_TIMEOUT_MS = 60 * 1000;
+
 const app = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
@@ -23,7 +25,7 @@ app.get("/match", (c) => {
     }
 
     const gameId = crypto.randomUUID();
-    games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {}, result: null });
+    games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {}, result: null, abandonTimer: null });
     waitingPlayer = { gameId };
     console.log(`[match] waiting for opponent, game ${gameId}`);
     return c.json({ waiting: true, gameId });
@@ -46,8 +48,16 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
     return {
         onOpen() {
             if (!games.has(gameId)) {
-                games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {}, result: null });
+                games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {}, result: null, abandonTimer: null });
             }
+
+            const game = games.get(gameId);
+            if (game.abandonTimer) {
+                clearTimeout(game.abandonTimer);
+                game.abandonTimer = null;
+                console.log(`[${gameId}] abandon timer cancelled - player reconnecting`);
+            }
+
             console.log(`[${gameId}] websocket opened`);
         },
 
@@ -195,9 +205,19 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
 
             if (game.white === ws) { game.white = null; console.log(`[${gameId}] white disconnected`); }
             if (game.black === ws) { game.black = null; console.log(`[${gameId}] black disconnected`); }
-            if (!game.white && !game.black && game.engine.game_result() !== "ongoing") {
-                games.delete(gameId);
-                console.log(`[${gameId}] game cleaned up`);
+
+            if (!game.white && !game.black) {
+                if (game.result || game.engine.game_result() !== "ongoing") {
+                    games.delete(gameId);
+                    console.log(`[${gameId}] game cleaned up (finished)`);
+                } else {
+                    console.log(`[${gameId}] both disconnected - starting abandon timer`);
+                    game.abandonTimer = setTimeout(() => {
+                        game.result = "draw_agreed";
+                        games.delete(gameId);
+                        console.log(`[${gameId}] game abandoned - removed`);
+                    }, ABANDON_TIMEOUT_MS);
+                }
             }
         }
     };
