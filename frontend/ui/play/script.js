@@ -1,4 +1,4 @@
-// TODO: arrows, premoves?
+// TODO: premoves?
 
 import init, { ChessEngine } from "../wasm/wasm.js";
 
@@ -16,6 +16,9 @@ let gameStarted = false;
 let moveHistory = [];
 let lastMove = null;
 let rollbackSnapshot = null;
+let arrowHighlights = new Set();
+let arrows = [];
+let rightDragFrom = null;
 let color = "w";
 let colorKnown = false;
 
@@ -161,6 +164,8 @@ function sendMove(uci) {
     lastMove = { from: fromSq, to: toSq };
     pushMove(san);
     deselect();
+    arrowHighlights.clear();
+    arrows = [];
 
     if (engine.is_in_check()) sfx("check");
     else if (mv.is_promotion()) sfx("promote");
@@ -409,6 +414,96 @@ function checkGameOver(result) {
     });
 }
 
+function renderArrows(invert) {
+    board.querySelectorAll("svg.arrows").forEach(el => el.remove());
+    if (arrows.length === 0) return;
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.classList.add("arrows");
+    svg.setAttribute("viewBox", "0 0 8 8");
+    svg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:10;overflow:visible;";
+
+    for (const { from, to } of arrows) {
+        const fx = (invert ? 7 - (from % 8) : from % 8) + 0.5;
+        const fy = (invert ? Math.floor(from / 8) : 7 - Math.floor(from / 8)) + 0.5;
+        const tx = (invert ? 7 - (to % 8) : to % 8) + 0.5;
+        const ty = (invert ? Math.floor(to / 8) : 7 - Math.floor(to / 8)) + 0.5;
+
+        const fileDiff = Math.abs((to % 8) - (from % 8));
+        const rankDiff = Math.abs(Math.floor(to / 8) - Math.floor(from / 8));
+        const isKnight = (fileDiff === 2 && rankDiff === 1) || (fileDiff === 1 && rankDiff === 2);
+
+        const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        poly.setAttribute("fill", "#E5A824");
+        poly.setAttribute("fill-opacity", "0.85");
+
+        if (isKnight) {
+            const ex = fx, ey = ty;
+
+            const dx1 = ex - fx, dy1 = ey - fy;
+            const dx2 = tx - ex, dy2 = ty - ey;
+
+            const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+            const ux2 = dx2 / len2, uy2 = dy2 / len2;
+            const px2 = -uy2, py2 = ux2;
+
+            const shaftW = 0.09;
+            const headW = 0.22;
+            const headLen = 0.3;
+
+            const shaftEndX = tx - ux2 * headLen;
+            const shaftEndY = ty - uy2 * headLen;
+
+            const hlen = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+            const uhx = dx1 / hlen, uhy = dy1 / hlen;
+            const phx = -uhy, phy = uhx;
+
+            const points = [
+                [fx + phx * shaftW, fy + phy * shaftW],
+                [ex + phx * shaftW, ey + py2 * shaftW],
+                [shaftEndX + px2 * shaftW, shaftEndY + py2 * shaftW],
+                [shaftEndX + px2 * headW, shaftEndY + py2 * headW],
+                [tx, ty],
+                [shaftEndX - px2 * headW, shaftEndY - py2 * headW],
+                [shaftEndX - px2 * shaftW, shaftEndY - py2 * shaftW],
+                [ex - phx * shaftW, ey - py2 * shaftW],
+                [fx - phx * shaftW, fy - phy * shaftW],
+            ].map(([x, y]) => `${x},${y}`).join(" ");
+
+            poly.setAttribute("points", points);
+        } else {
+            const dx = tx - fx, dy = ty - fy;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const ux = dx / len, uy = dy / len;
+            const px = -uy, py = ux;
+
+            const shaftW = 0.09;
+            const headW = 0.22;
+            const headLen = 0.3;
+            const shaftEnd = 1 - headLen / len;
+
+            const sx = fx + ux * 0.3, sy = fy + uy * 0.3;
+            const ex = fx + ux * len * shaftEnd, ey = fy + uy * len * shaftEnd;
+
+            const points = [
+                [sx + px * shaftW, sy + py * shaftW],
+                [ex + px * shaftW, ey + py * shaftW],
+                [ex + px * headW, ey + py * headW],
+                [tx, ty],
+                [ex - px * headW, ey - py * headW],
+                [ex - px * shaftW, ey - py * shaftW],
+                [sx - px * shaftW, sy - py * shaftW],
+            ].map(([x, y]) => `${x},${y}`).join(" ");
+
+            poly.setAttribute("points", points);
+        }
+
+        svg.appendChild(poly);
+    }
+
+    board.appendChild(svg);
+}
+
 function renderBoard(invert = false) {
     if (board.querySelectorAll(".sq").length === 0) {
         for (let i = 0; i < 64; i++) {
@@ -437,6 +532,7 @@ function renderBoard(invert = false) {
             if (legalTargets.includes(sqIndex)) div.classList.add(piece ? "legal-capture" : "legal");
             if (sqIndex === kingSq) div.classList.add("in-check");
             if (lastMove && (sqIndex === lastMove.from || sqIndex === lastMove.to)) div.classList.add("last-move");
+            if (arrowHighlights.has(sqIndex)) div.classList.add("arrow-highlight");
 
             let img = div.querySelector("img.piece");
             if (colorKnown) {
@@ -493,9 +589,26 @@ function renderBoard(invert = false) {
 
         board.appendChild(card);
     }
+
+    renderArrows(invert);
 }
 
+board.addEventListener("contextmenu", e => e.preventDefault());
+
 board.addEventListener("pointerdown", e => {
+    if (e.button === 2) {
+        const div = e.target.closest(".sq");
+        if (!div) return;
+        rightDragFrom = parseInt(div.dataset.sq);
+        return;
+    }
+
+    if (arrowHighlights.size > 0 || arrows.length > 0) {
+        arrowHighlights.clear();
+        arrows = [];
+        renderBoard(color === "b");
+    }
+
     const div = e.target.closest(".sq");
     if (!div) return;
     const sqIndex = parseInt(div.dataset.sq);
@@ -521,6 +634,27 @@ board.addEventListener("pointerdown", e => {
     if (piece) { pendingPointer = { sqIndex, piece, startX: e.clientX, startY: e.clientY }; return; }
 
     deselect(); renderBoard(color === "b");
+});
+
+board.addEventListener("pointerup", e => {
+    if (e.button === 2) {
+        const div = e.target.closest(".sq");
+        if (!div || rightDragFrom === null) { rightDragFrom = null; return; }
+        const toSq = parseInt(div.dataset.sq);
+
+        if (toSq === rightDragFrom) {
+            if (arrowHighlights.has(toSq)) arrowHighlights.delete(toSq);
+            else arrowHighlights.add(toSq);
+        } else {
+            const idx = arrows.findIndex(a => a.from === rightDragFrom && a.to === toSq);
+            if (idx >= 0) arrows.splice(idx, 1);
+            else arrows.push({ from: rightDragFrom, to: toSq });
+        }
+
+        rightDragFrom = null;
+        renderBoard(color === "b");
+        return;
+    }
 });
 
 document.addEventListener("pointermove", e => {
