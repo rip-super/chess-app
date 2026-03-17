@@ -571,8 +571,10 @@ function renderBoard(invert = false) {
         const card = document.createElement("div");
         card.className = "promo-card";
         card.style.left = ((invert ? 7 - promoFile : promoFile) * (board.clientWidth / 8)) + "px";
-        card.style.top = promoRank === 7 ? "0px" : "auto";
-        card.style.bottom = promoRank === 0 ? "0px" : "auto";
+
+        const atTop = (promoRank === 7) !== invert;
+        card.style.top = atTop ? "0px" : "auto";
+        card.style.bottom = atTop ? "auto" : "0px";
 
         ["Q", "R", "B", "N"].forEach(p => {
             const btn = document.createElement("div");
