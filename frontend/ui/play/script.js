@@ -178,7 +178,7 @@ function sendMove(uci) {
     renderBoard(color === "b");
 
     const size = fromRect.width * 0.85;
-    const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
+    const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.png`, className: "piece-anim" });
 
     Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
     document.body.appendChild(anim);
@@ -292,7 +292,7 @@ function connect() {
                 renderBoard(color === "b");
 
                 const size = fromRect.width * 0.85;
-                const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.svg`, className: "piece-anim" });
+                const anim = Object.assign(document.createElement("img"), { src: `assets/images/${pieceCode}.png`, className: "piece-anim" });
 
                 Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
                 document.body.appendChild(anim);
@@ -542,7 +542,7 @@ function renderBoard(invert = false) {
                         img.className = "piece";
                         div.appendChild(img);
                     }
-                    const newSrc = `assets/images/${piece}.svg`;
+                    const newSrc = `assets/images/${piece}.png`;
                     if (img.src !== newSrc) img.src = newSrc;
                     img.style.opacity = (dragState?.fromSq === sqIndex || animatingToSq === sqIndex) ? "0" : "";
                 } else if (img) {
@@ -577,7 +577,7 @@ function renderBoard(invert = false) {
         ["Q", "R", "B", "N"].forEach(p => {
             const btn = document.createElement("div");
             btn.className = "promo-btn";
-            btn.appendChild(Object.assign(document.createElement("img"), { src: `assets/images/${side}${p}.svg`, className: "piece" }));
+            btn.appendChild(Object.assign(document.createElement("img"), { src: `assets/images/${side}${p}.png`, className: "piece" }));
             btn.addEventListener("pointerdown", e => {
                 e.stopPropagation();
                 const uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}${p.toLowerCase()}`;
@@ -661,7 +661,7 @@ document.addEventListener("pointermove", e => {
     if (pendingPointer && !dragState) {
         if (Math.hypot(e.clientX - pendingPointer.startX, e.clientY - pendingPointer.startY) < 5) return;
         const { sqIndex, piece } = pendingPointer;
-        const ghost = Object.assign(document.createElement("img"), { src: `assets/images/${piece}.svg`, className: "piece-ghost" });
+        const ghost = Object.assign(document.createElement("img"), { src: `assets/images/${piece}.png`, className: "piece-ghost" });
 
         Object.assign(ghost.style, { left: e.clientX + "px", top: e.clientY + "px" });
         document.body.appendChild(ghost);
