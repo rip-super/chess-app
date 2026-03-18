@@ -150,6 +150,14 @@ body {
     background-color: var(--sq-last-move-dark);
 }
 
+.sq.light.arrow-highlight {
+    background-color: #D97B72;
+}
+
+.sq.dark.arrow-highlight {
+    background-color: #C4584E;
+}
+
 .piece {
     position: relative;
     z-index: 1;

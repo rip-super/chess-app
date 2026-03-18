@@ -15,7 +15,6 @@ const TIME_CONTROLS = {
 };
 
 const DEFAULT_TIME_CONTROL = "10+0";
-const CLAIM_TIMEOUT_MS = 60 * 1000;
 
 const app = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
@@ -333,6 +332,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     }, ABANDON_TIMEOUT_MS);
                 }
             } else if (remaining && !game.result && game.engine.game_result() === "ongoing") {
+                const CLAIM_TIMEOUT_MS = 60 * 1000;
                 remaining.send(JSON.stringify({ type: "opponent_disconnected", claimInMs: CLAIM_TIMEOUT_MS }));
                 game.disconnectTimer = setTimeout(() => {
                     game.disconnectTimer = null;
