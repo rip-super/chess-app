@@ -25,6 +25,8 @@ let clocks = { w: 10 * 60 * 1000, b: 10 * 60 * 1000 };
 let clockActive = null;
 let clockAt = null;
 let clockRafId = null;
+let disconnectBanner = null;
+let disconnectCountdownId = null;
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
@@ -299,6 +301,12 @@ function connect() {
             return;
         }
 
+        if (msg.type === "not_found") {
+            localStorage.removeItem("gameId");
+            window.location.href = "/";
+            return;
+        }
+
         if (msg.type === "assign") {
             color = msg.color;
             colorKnown = true;
@@ -414,6 +422,51 @@ function connect() {
             return;
         }
 
+        if (msg.type === "opponent_disconnected") {
+            disconnectBanner = document.createElement("div");
+            disconnectBanner.className = "draw-offer-banner";
+            document.getElementById("sidebar-actions").prepend(disconnectBanner);
+
+            const endsAt = Date.now() + msg.claimInMs;
+
+            function updateDisconnectBanner() {
+                const remaining = Math.max(0, endsAt - Date.now());
+                const secs = Math.ceil(remaining / 1000);
+                const m = Math.floor(secs / 60);
+                const s = secs % 60;
+                const timeStr = `${m}:${s.toString().padStart(2, "0")}`;
+                disconnectBanner.innerHTML = `
+            <span>Opponent disconnected</span>
+            <span style="font-size:0.65rem;color:var(--text-muted)">Claim victory in ${timeStr}</span>`;
+                if (remaining > 0) disconnectCountdownId = setTimeout(updateDisconnectBanner, 500);
+            }
+
+            updateDisconnectBanner();
+            return;
+        }
+
+        if (msg.type === "opponent_reconnected") {
+            if (disconnectCountdownId) { clearTimeout(disconnectCountdownId); disconnectCountdownId = null; }
+            disconnectBanner?.remove();
+            disconnectBanner = null;
+            return;
+        }
+
+        if (msg.type === "can_claim_victory") {
+            if (disconnectCountdownId) { clearTimeout(disconnectCountdownId); disconnectCountdownId = null; }
+            if (disconnectBanner) {
+                disconnectBanner.innerHTML = `
+            <span>Opponent still gone</span>
+            <div class="offer-btns">
+                <button class="action-btn" id="claim-victory-btn">Claim victory</button>
+            </div>`;
+                document.getElementById("claim-victory-btn").addEventListener("pointerdown", () => {
+                    ws.send(JSON.stringify({ type: "claim_victory" }));
+                });
+            }
+            return;
+        }
+
         if (msg.type === "game_over") {
             sfx("game_end");
             applyClockState({ clockActive: null });
@@ -447,6 +500,8 @@ function checkGameOver(result) {
         draw_agreed: { top: "Draw", bottom: "By Mutual Agreement" },
         timeout_white: { top: "Time Out", bottom: "Black wins!" },
         timeout_black: { top: "Time Out", bottom: "White wins!" },
+        abandon_white: { top: "Game Abandoned", bottom: "Black wins!" },
+        abandon_black: { top: "Game Abandoned", bottom: "White wins!" },
     };
 
     const { top, bottom } = msgs[result] ?? { top: "Game Over", bottom: "" };
@@ -468,6 +523,10 @@ function checkGameOver(result) {
 
     drawBtn.disabled = true;
     resignBtn.disabled = true;
+
+    if (disconnectCountdownId) { clearTimeout(disconnectCountdownId); disconnectCountdownId = null; }
+    disconnectBanner?.remove();
+    disconnectBanner = null;
 
     board.appendChild(panel);
 

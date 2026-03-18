@@ -15,6 +15,7 @@ const TIME_CONTROLS = {
 };
 
 const DEFAULT_TIME_CONTROL = "10+0";
+const CLAIM_TIMEOUT_MS = 60 * 1000;
 
 const app = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
@@ -34,11 +35,16 @@ function createNewGame(tcId = DEFAULT_TIME_CONTROL) {
         clockActive: null,
         lastTickAt: null,
         flagTimer: null,
+        disconnectTimer: null,
     };
 }
 
 function clearFlagTimer(game) {
     if (game.flagTimer) { clearTimeout(game.flagTimer); game.flagTimer = null; }
+}
+
+function clearDisconnectTimer(game) {
+    if (game.disconnectTimer) { clearTimeout(game.disconnectTimer); game.disconnectTimer = null; }
 }
 
 function scheduleFlagTimer(gameId, game) {
@@ -105,15 +111,10 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
 
     return {
         onOpen() {
-            if (!games.has(gameId)) {
-                games.set(gameId, createNewGame());
-            }
-
             const game = games.get(gameId);
-            if (game.abandonTimer) {
+            if (game?.abandonTimer) {
                 clearTimeout(game.abandonTimer);
                 game.abandonTimer = null;
-                console.log(`[${gameId}] abandon timer cancelled - player reconnecting`);
             }
 
             console.log(`[${gameId}] websocket opened`);
@@ -121,6 +122,12 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
 
         onMessage(evt, ws) {
             const { type, uci, token } = JSON.parse(evt.data);
+
+            if (type === "auth" && !games.has(gameId)) {
+                ws.send(JSON.stringify({ type: "not_found" }));
+                return;
+            }
+
             const game = games.get(gameId);
             if (!game) return;
 
@@ -136,6 +143,13 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
 
                     if (restoredColor === "w") game.white = ws;
                     else game.black = ws;
+
+                    if (game.disconnectTimer) {
+                        clearTimeout(game.disconnectTimer);
+                        game.disconnectTimer = null;
+                        const opponent = restoredColor === "w" ? game.black : game.white;
+                        opponent?.send(JSON.stringify({ type: "opponent_reconnected" }));
+                    }
 
                     ws.send(JSON.stringify({ type: "assign", color: restoredColor }));
                     ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen(), ...clockState(game) }));
@@ -192,6 +206,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
 
             if (type === "resign") {
                 clearFlagTimer(game);
+                clearDisconnectTimer(game);
                 const resignColor = game.white === ws ? "w" : "b";
                 const result = resignColor === "w" ? "resign_white" : "resign_black";
                 game.result = result;
@@ -211,6 +226,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
 
             if (type === "draw_accepted") {
                 clearFlagTimer(game);
+                clearDisconnectTimer(game);
                 game.result = "draw_agreed";
                 const msg = JSON.stringify({ type: "game_over", result: "draw_agreed" });
                 game.white?.send(msg);
@@ -221,6 +237,19 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             if (type === "draw_declined") {
                 const opponent = game.white === ws ? game.black : game.white;
                 opponent?.send(JSON.stringify({ type: "draw_declined" }));
+                return;
+            }
+
+            if (type === "claim_victory") {
+                if (game.result) return;
+                const claimColor = game.white === ws ? "w" : "b";
+                const opponent = claimColor === "w" ? game.black : game.white;
+                if (opponent) return;
+                const result = claimColor === "w" ? "abandon_black" : "abandon_white";
+                game.result = result;
+                clearFlagTimer(game);
+                games.delete(gameId);
+                ws.send(JSON.stringify({ type: "game_over", result }));
                 return;
             }
 
@@ -282,24 +311,36 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             const game = games.get(gameId);
             if (!game) return;
 
-            if (game.white === ws) { game.white = null; console.log(`[${gameId}] white disconnected`); }
-            if (game.black === ws) { game.black = null; console.log(`[${gameId}] black disconnected`); }
+            const disconnectedColor = game.white === ws ? "w" : game.black === ws ? "b" : null;
+            if (!disconnectedColor) return;
+
+            if (disconnectedColor === "w") { game.white = null; console.log(`[${gameId}] white disconnected`); }
+            else { game.black = null; console.log(`[${gameId}] black disconnected`); }
+
+            const remaining = game.white ?? game.black;
 
             if (!game.white && !game.black) {
+                clearDisconnectTimer(game);
                 if (game.result || game.engine.game_result() !== "ongoing") {
                     clearFlagTimer(game);
                     games.delete(gameId);
                     console.log(`[${gameId}] game cleaned up (finished)`);
                 } else {
-                    console.log(`[${gameId}] both disconnected - starting abandon timer`);
                     game.abandonTimer = setTimeout(() => {
                         clearFlagTimer(game);
                         games.delete(gameId);
                         console.log(`[${gameId}] game abandoned - removed`);
                     }, ABANDON_TIMEOUT_MS);
                 }
+            } else if (remaining && !game.result && game.engine.game_result() === "ongoing") {
+                remaining.send(JSON.stringify({ type: "opponent_disconnected", claimInMs: CLAIM_TIMEOUT_MS }));
+                game.disconnectTimer = setTimeout(() => {
+                    game.disconnectTimer = null;
+                    const still = game.white ?? game.black;
+                    still?.send(JSON.stringify({ type: "can_claim_victory" }));
+                }, CLAIM_TIMEOUT_MS);
             }
-        }
+        },
     };
 }));
 
