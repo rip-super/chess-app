@@ -1,5 +1,3 @@
-// TODO: more times
-
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -13,7 +11,15 @@ await init({ module_or_path: wasm });
 const ABANDON_TIMEOUT_MS = 60 * 1000;
 
 const TIME_CONTROLS = {
-    "10+0": { initial: 10 * 60 * 1000, increment: 0 },
+    "1+0": { initial: 60_000, increment: 0 },
+    "1+1": { initial: 60_000, increment: 1_000 },
+    "2+1": { initial: 2 * 60_000, increment: 1_000 },
+    "3+0": { initial: 3 * 60_000, increment: 0 },
+    "3+2": { initial: 3 * 60_000, increment: 2_000 },
+    "5+0": { initial: 5 * 60_000, increment: 0 },
+    "10+0": { initial: 10 * 60_000, increment: 0 },
+    "15+10": { initial: 15 * 60_000, increment: 10_000 },
+    "30+0": { initial: 30 * 60_000, increment: 0 },
 };
 
 const DEFAULT_TIME_CONTROL = "10+0";
@@ -22,7 +28,7 @@ const app = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
 const games = new Map();
-let waitingPlayer = null;
+const waitingPlayers = new Map();
 
 function createNewGame(tcId = DEFAULT_TIME_CONTROL) {
     const tc = TIME_CONTROLS[tcId] ?? TIME_CONTROLS[DEFAULT_TIME_CONTROL];
@@ -32,6 +38,7 @@ function createNewGame(tcId = DEFAULT_TIME_CONTROL) {
         tokens: {}, result: null,
         abandonTimer: null,
         timeControl: tc,
+        tcId,
         clocks: { w: tc.initial, b: tc.initial },
         clockActive: null,
         lastTickAt: null,
@@ -82,29 +89,31 @@ function clockState(game) {
 }
 
 app.get("/match", (c) => {
-    if (waitingPlayer) {
-        const gameId = waitingPlayer.gameId;
-        waitingPlayer = null;
-        console.log(`[match] paired into game ${gameId}`);
+    const tcId = c.req.query("tc") ?? DEFAULT_TIME_CONTROL;
+    if (!TIME_CONTROLS[tcId]) return c.json({ error: "invalid time control" }, 400);
+
+    if (waitingPlayers.has(tcId)) {
+        const gameId = waitingPlayers.get(tcId);
+        waitingPlayers.delete(tcId);
+        console.log(`[match] paired into game ${gameId} (${tcId})`);
         return c.json({ gameId });
     }
 
     const gameId = crypto.randomUUID();
-    games.set(gameId, createNewGame());
-    waitingPlayer = { gameId };
-    console.log(`[match] waiting for opponent, game ${gameId}`);
+    games.set(gameId, createNewGame(tcId));
+    waitingPlayers.set(tcId, gameId);
+    console.log(`[match] waiting for opponent, game ${gameId} (${tcId})`);
     return c.json({ waiting: true, gameId });
 });
 
 app.get("/match/:gameId", (c) => {
     const gameId = c.req.param("gameId");
+    const tcId = c.req.query("tc") ?? DEFAULT_TIME_CONTROL;
 
-    if (!waitingPlayer || waitingPlayer.gameId !== gameId) {
-        if (games.has(gameId)) return c.json({ gameId });
-        return c.json({ error: "expired" }, 404);
-    }
+    if (waitingPlayers.get(tcId) === gameId) return c.json({ waiting: true });
 
-    return c.json({ waiting: true });
+    if (games.has(gameId)) return c.json({ gameId });
+    return c.json({ error: "expired" }, 404);
 });
 
 app.get("/ws/:gameId", upgradeWebSocket(c => {

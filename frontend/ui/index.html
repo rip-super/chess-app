@@ -25,6 +25,52 @@
         </div>
         <div id="status" class="status"></div>
     </main>
+
+    <div id="tc-overlay" class="tc-overlay hidden">
+        <div class="tc-panel">
+            <div class="tc-header">Choose time control</div>
+            <div class="tc-grid">
+                <button class="tc-btn" data-tc="1+0">
+                    <span class="tc-time">1 min</span>
+                    <span class="tc-type">Bullet</span>
+                </button>
+                <button class="tc-btn" data-tc="1+1">
+                    <span class="tc-time">1 | 1</span>
+                    <span class="tc-type">Bullet</span>
+                </button>
+                <button class="tc-btn" data-tc="2+1">
+                    <span class="tc-time">2 | 1</span>
+                    <span class="tc-type">Bullet</span>
+                </button>
+                <button class="tc-btn" data-tc="3+0">
+                    <span class="tc-time">3 min</span>
+                    <span class="tc-type">Blitz</span>
+                </button>
+                <button class="tc-btn" data-tc="3+2">
+                    <span class="tc-time">3 | 2</span>
+                    <span class="tc-type">Blitz</span>
+                </button>
+                <button class="tc-btn" data-tc="5+0">
+                    <span class="tc-time">5 min</span>
+                    <span class="tc-type">Blitz</span>
+                </button>
+                <button class="tc-btn" data-tc="10+0">
+                    <span class="tc-time">10 min</span>
+                    <span class="tc-type">Rapid</span>
+                </button>
+                <button class="tc-btn" data-tc="15+10">
+                    <span class="tc-time">15 | 10</span>
+                    <span class="tc-type">Rapid</span>
+                </button>
+                <button class="tc-btn" data-tc="30+0">
+                    <span class="tc-time">30 min</span>
+                    <span class="tc-type">Classical</span>
+                </button>
+            </div>
+            <button id="tc-cancel" class="btn tc-cancel">Cancel</button>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 

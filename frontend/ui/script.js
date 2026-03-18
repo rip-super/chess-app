@@ -6,13 +6,23 @@ window.addEventListener("pageshow", () => {
 const playBtn = document.getElementById("play-btn");
 const settingsBtn = document.getElementById("settings-btn");
 const statusText = document.getElementById("status");
+const tcOverlay = document.getElementById("tc-overlay");
+const tcCancel = document.getElementById("tc-cancel");
 
-playBtn.addEventListener("click", async () => {
+let activeInterval = null;
+
+function cancelMatchmaking() {
+    if (activeInterval) { clearInterval(activeInterval); activeInterval = null; }
+    playBtn.disabled = false;
+    statusText.innerHTML = "";
+}
+
+async function startMatchmaking(tc) {
     playBtn.disabled = true;
     statusText.innerHTML = "Finding a game<span class='dots'></span>";
 
     try {
-        const res = await fetch("/match");
+        const res = await fetch(`/match?tc=${encodeURIComponent(tc)}`);
         const data = await res.json();
 
         if (data.gameId && !data.waiting) {
@@ -23,27 +33,29 @@ playBtn.addEventListener("click", async () => {
 
         if (data.waiting) {
             const gameId = data.gameId;
-            const interval = setInterval(async () => {
+            activeInterval = setInterval(async () => {
                 try {
-                    const r = await fetch(`/match/${gameId}`);
+                    const r = await fetch(`/match/${gameId}?tc=${encodeURIComponent(tc)}`);
                     const d = await r.json();
                     if (d.gameId) {
-                        clearInterval(interval);
+                        clearInterval(activeInterval); activeInterval = null;
                         localStorage.setItem("gameId", d.gameId);
                         window.location.href = `/play/${d.gameId}`;
                     } else if (d.error) {
-                        clearInterval(interval);
+                        clearInterval(activeInterval); activeInterval = null;
                         statusText.textContent = "Timed out - try again.";
                         playBtn.disabled = false;
                     }
-                } catch { clearInterval(interval); playBtn.disabled = false; }
+                } catch { clearInterval(activeInterval); activeInterval = null; playBtn.disabled = false; }
             }, 500);
 
             setTimeout(() => {
-                clearInterval(interval);
-                if (playBtn.disabled) {
-                    statusText.textContent = "Timed out - try again.";
-                    playBtn.disabled = false;
+                if (activeInterval) {
+                    clearInterval(activeInterval); activeInterval = null;
+                    if (playBtn.disabled) {
+                        statusText.textContent = "Timed out - try again.";
+                        playBtn.disabled = false;
+                    }
                 }
             }, 30000);
         }
@@ -51,6 +63,22 @@ playBtn.addEventListener("click", async () => {
         statusText.textContent = "Connection error - try again.";
         playBtn.disabled = false;
     }
+}
+
+playBtn.addEventListener("click", () => {
+    tcOverlay.classList.remove("hidden");
+});
+
+tcCancel.addEventListener("click", () => {
+    tcOverlay.classList.add("hidden");
+    cancelMatchmaking();
+});
+
+document.querySelectorAll(".tc-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+        tcOverlay.classList.add("hidden");
+        startMatchmaking(btn.dataset.tc);
+    });
 });
 
 settingsBtn.addEventListener("click", () => {
@@ -59,7 +87,7 @@ settingsBtn.addEventListener("click", () => {
 
 if (sessionStorage.getItem("autoplay")) {
     sessionStorage.removeItem("autoplay");
-    playBtn.click();
+    tcOverlay.classList.remove("hidden");
 }
 
 const bgCanvas = document.getElementById("bg-canvas");

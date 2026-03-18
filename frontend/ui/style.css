@@ -167,6 +167,128 @@ img {
     }
 }
 
+.tc-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    animation: fadeIn 0.15s ease;
+}
+
+.tc-overlay.hidden {
+    display: none;
+}
+
+.tc-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 320px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8);
+    animation: slideUp 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tc-header {
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+}
+
+.tc-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.tc-btn {
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    padding: 12px 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.tc-btn:hover {
+    border-color: var(--accent);
+}
+
+.tc-btn:hover .tc-time {
+    color: var(--accent);
+}
+
+.tc-time {
+    font-family: "Inter", monospace;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.02em;
+    transition: color 0.15s ease;
+}
+
+.tc-type {
+    font-family: "Inter", monospace;
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.tc-cancel {
+    background: transparent;
+    border: 1px solid var(--border-deeper);
+    color: var(--text);
+    font-family: "Inter", monospace;
+    font-size: 0.72rem;
+    padding: 8px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+    width: 100%;
+}
+
+.tc-cancel:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 @keyframes fadeUp {
     from {
         opacity: 0;
