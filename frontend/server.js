@@ -1,3 +1,5 @@
+// TODO: more times, fix time spiking up after resigning or accpeting draw (prob the server time out of sync, date.now())
+
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -11,7 +13,7 @@ await init({ module_or_path: wasm });
 const ABANDON_TIMEOUT_MS = 60 * 1000;
 
 const TIME_CONTROLS = {
-    "10+0": { initial: 10 * 60 * 1000, increment: 0 },
+    "10+0": { initial: 0.5 * 60 * 1000, increment: 0 },
 };
 
 const DEFAULT_TIME_CONTROL = "10+0";

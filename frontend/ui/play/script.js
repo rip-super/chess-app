@@ -27,6 +27,7 @@ let clockAt = null;
 let clockRafId = null;
 let disconnectBanner = null;
 let disconnectCountdownId = null;
+let clockLowPlayed = { w: false, b: false };
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
@@ -91,7 +92,14 @@ function updateClockDisplay() {
     clockBottom.classList.toggle("active", clockActive === color);
 
     clockTop.classList.toggle("low", topMs > 0 && topMs < 15_000);
-    clockBottom.classList.toggle("low", bottomMs > 0 && bottomMs < 15_000);
+
+    const bottomLow = bottomMs > 0 && bottomMs < 15_000;
+    clockBottom.classList.toggle("low", bottomLow);
+
+    if (bottomLow && !clockLowPlayed[color]) {
+        clockLowPlayed[color] = true;
+        sfx("time_low").catch(() => { clockLowPlayed[color] = false; });
+    }
 }
 
 function tickClocks() {
@@ -112,6 +120,12 @@ function stopClockTick() {
 }
 
 function applyClockState(msg) {
+    if (msg.clocks) {
+        if (msg.clocks.w > 15_000) clockLowPlayed.w = false;
+        if (msg.clocks.b > 15_000) clockLowPlayed.b = false;
+        clocks = msg.clocks;
+    }
+
     if (msg.clocks) clocks = msg.clocks;
     if (msg.clockActive !== undefined) clockActive = msg.clockActive;
     if (msg.clockAt !== undefined) clockAt = Date.now();
