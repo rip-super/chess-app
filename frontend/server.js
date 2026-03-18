@@ -1,4 +1,4 @@
-// TODO: more times, fix time spiking up after resigning or accpeting draw (prob the server time out of sync, date.now())
+// TODO: more times
 
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
@@ -13,7 +13,7 @@ await init({ module_or_path: wasm });
 const ABANDON_TIMEOUT_MS = 60 * 1000;
 
 const TIME_CONTROLS = {
-    "10+0": { initial: 0.5 * 60 * 1000, increment: 0 },
+    "10+0": { initial: 10 * 60 * 1000, increment: 0 },
 };
 
 const DEFAULT_TIME_CONTROL = "10+0";
@@ -60,7 +60,7 @@ function scheduleFlagTimer(gameId, game) {
         g.clocks[color] = 0;
         clearFlagTimer(g);
         games.delete(gameId);
-        const msg = JSON.stringify({ type: "game_over", result });
+        const msg = JSON.stringify({ type: "game_over", result, ...clockState(g) });
         g.white?.send(msg);
         g.black?.send(msg);
         console.log(`[${gameId}] flag — ${result}`);
@@ -210,8 +210,16 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                 clearDisconnectTimer(game);
                 const resignColor = game.white === ws ? "w" : "b";
                 const result = resignColor === "w" ? "resign_white" : "resign_black";
+
+                if (game.clockActive && game.lastTickAt) {
+                    const elapsed = Date.now() - game.lastTickAt;
+                    game.clocks[game.clockActive] = Math.max(0, game.clocks[game.clockActive] - elapsed);
+                }
+
+                game.clockActive = null;
                 game.result = result;
-                const msg = JSON.stringify({ type: "game_over", result });
+
+                const msg = JSON.stringify({ type: "game_over", result, ...clockState(game) });
                 game.white?.send(msg);
                 game.black?.send(msg);
                 return;
@@ -228,8 +236,16 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             if (type === "draw_accepted") {
                 clearFlagTimer(game);
                 clearDisconnectTimer(game);
+
+                if (game.clockActive && game.lastTickAt) {
+                    const elapsed = Date.now() - game.lastTickAt;
+                    game.clocks[game.clockActive] = Math.max(0, game.clocks[game.clockActive] - elapsed);
+                }
+
+                game.clockActive = null;
                 game.result = "draw_agreed";
-                const msg = JSON.stringify({ type: "game_over", result: "draw_agreed" });
+
+                const msg = JSON.stringify({ type: "game_over", result: "draw_agreed", ...clockState(game) });
                 game.white?.send(msg);
                 game.black?.send(msg);
                 return;

@@ -483,7 +483,7 @@ function connect() {
 
         if (msg.type === "game_over") {
             sfx("game_end");
-            applyClockState({ clockActive: null });
+            applyClockState({ ...msg, clockActive: null });
             checkGameOver(msg.result);
             return;
         }
