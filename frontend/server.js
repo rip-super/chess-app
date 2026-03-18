@@ -263,10 +263,17 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                 const opponent = claimColor === "w" ? game.black : game.white;
                 if (opponent) return;
                 const result = claimColor === "w" ? "abandon_black" : "abandon_white";
+
+                if (game.clockActive && game.lastTickAt) {
+                    const elapsed = Date.now() - game.lastTickAt;
+                    game.clocks[game.clockActive] = Math.max(0, game.clocks[game.clockActive] - elapsed);
+                }
+
+                game.clockActive = null;
                 game.result = result;
                 clearFlagTimer(game);
                 games.delete(gameId);
-                ws.send(JSON.stringify({ type: "game_over", result }));
+                ws.send(JSON.stringify({ type: "game_over", result, ...clockState(game) }));
                 return;
             }
 
