@@ -10,11 +10,69 @@ await init({ module_or_path: wasm });
 
 const ABANDON_TIMEOUT_MS = 60 * 1000;
 
+const TIME_CONTROLS = {
+    "10+0": { initial: 10 * 60 * 1000, increment: 0 },
+};
+
+const DEFAULT_TIME_CONTROL = "10+0";
+
 const app = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
 const games = new Map();
 let waitingPlayer = null;
+
+function createNewGame(tcId = DEFAULT_TIME_CONTROL) {
+    const tc = TIME_CONTROLS[tcId] ?? TIME_CONTROLS[DEFAULT_TIME_CONTROL];
+    return {
+        engine: new ChessEngine(),
+        white: null, black: null,
+        tokens: {}, result: null,
+        abandonTimer: null,
+        timeControl: tc,
+        clocks: { w: tc.initial, b: tc.initial },
+        clockActive: null,
+        lastTickAt: null,
+        flagTimer: null,
+    };
+}
+
+function clearFlagTimer(game) {
+    if (game.flagTimer) { clearTimeout(game.flagTimer); game.flagTimer = null; }
+}
+
+function scheduleFlagTimer(gameId, game) {
+    clearFlagTimer(game);
+    if (!game.clockActive) return;
+    const color = game.clockActive;
+    game.flagTimer = setTimeout(() => {
+        const g = games.get(gameId);
+        if (!g || g.clockActive !== color || g.result) return;
+        const result = color === "w" ? "timeout_white" : "timeout_black";
+        g.result = result;
+        g.clocks[color] = 0;
+        clearFlagTimer(g);
+        games.delete(gameId);
+        const msg = JSON.stringify({ type: "game_over", result });
+        g.white?.send(msg);
+        g.black?.send(msg);
+        console.log(`[${gameId}] flag — ${result}`);
+    }, game.clocks[color]);
+}
+
+function startClocks(gameId, game) {
+    game.clockActive = "w";
+    game.lastTickAt = Date.now();
+    scheduleFlagTimer(gameId, game);
+}
+
+function clockState(game) {
+    return {
+        clocks: { ...game.clocks },
+        clockActive: game.clockActive,
+        clockAt: game.lastTickAt,
+    };
+}
 
 app.get("/match", (c) => {
     if (waitingPlayer) {
@@ -25,7 +83,7 @@ app.get("/match", (c) => {
     }
 
     const gameId = crypto.randomUUID();
-    games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {}, result: null, abandonTimer: null });
+    games.set(gameId, createNewGame());
     waitingPlayer = { gameId };
     console.log(`[match] waiting for opponent, game ${gameId}`);
     return c.json({ waiting: true, gameId });
@@ -48,7 +106,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
     return {
         onOpen() {
             if (!games.has(gameId)) {
-                games.set(gameId, { engine: new ChessEngine(), white: null, black: null, tokens: {}, result: null, abandonTimer: null });
+                games.set(gameId, createNewGame());
             }
 
             const game = games.get(gameId);
@@ -80,12 +138,8 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     else game.black = ws;
 
                     ws.send(JSON.stringify({ type: "assign", color: restoredColor }));
-                    ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen() }));
-
-                    if (game.result) {
-                        ws.send(JSON.stringify({ type: "game_over", result: game.result }));
-                    }
-
+                    ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen(), ...clockState(game) }));
+                    if (game.result) ws.send(JSON.stringify({ type: "game_over", result: game.result }));
                     return;
                 }
 
@@ -108,25 +162,36 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                         console.log(`[${gameId}] player joined as black`);
                         ws.send(JSON.stringify({ type: "assign", color: "b" }));
                     }
+
+                    startClocks(gameId, game);
                 } else {
                     console.warn(`[${gameId}] player tried to join full game`);
                     ws.send(JSON.stringify({ type: "error", msg: "game full" }));
                     return;
                 }
-                ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen() }));
+
+                const syncMsg = JSON.stringify({ type: "sync", fen: game.engine.get_fen(), ...clockState(game) });
+                game.white?.send(syncMsg);
+                game.black?.send(syncMsg);
                 return;
             }
 
             if (type === "new_game") {
+                clearFlagTimer(game);
                 game.engine = new ChessEngine();
+                game.clocks = { w: game.timeControl.initial, b: game.timeControl.initial };
+                startClocks(gameId, game);
+
                 console.log(`[${gameId}] new game started`);
-                const sync = JSON.stringify({ type: "sync", fen: game.engine.get_fen() });
+
+                const sync = JSON.stringify({ type: "sync", fen: game.engine.get_fen(), ...clockState(game) });
                 game.white?.send(sync);
                 game.black?.send(sync);
                 return;
             }
 
             if (type === "resign") {
+                clearFlagTimer(game);
                 const resignColor = game.white === ws ? "w" : "b";
                 const result = resignColor === "w" ? "resign_white" : "resign_black";
                 game.result = result;
@@ -139,12 +204,13 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             if (type === "draw_offer") {
                 const opponent = game.white === ws ? game.black : game.white;
                 if (!opponent) return;
-                console.log(`[${gameId}] draw offered`);
+
                 opponent.send(JSON.stringify({ type: "draw_offer" }));
                 return;
             }
 
             if (type === "draw_accepted") {
+                clearFlagTimer(game);
                 game.result = "draw_agreed";
                 const msg = JSON.stringify({ type: "game_over", result: "draw_agreed" });
                 game.white?.send(msg);
@@ -164,21 +230,33 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             const isWhite = game.white === ws;
             const isBlack = game.black === ws;
             if ((sideToMove === "w" && !isWhite) || (sideToMove === "b" && !isBlack)) {
-                console.warn(`[${gameId}] out-of-turn move attempt: ${uci}`);
                 ws.send(JSON.stringify({ type: "error", msg: "not your turn" }));
                 return;
             }
 
             const mv = game.engine.parse_uci(uci);
-            if (!mv) {
-                console.warn(`[${gameId}] invalid uci: ${uci}`);
-                return ws.send(JSON.stringify({ type: "error", msg: "invalid move" }));
-            }
+            if (!mv) return ws.send(JSON.stringify({ type: "error", msg: "invalid move" }));
 
             try {
+                if (game.clockActive && game.lastTickAt) {
+                    const elapsed = Date.now() - game.lastTickAt;
+                    game.clocks[sideToMove] = Math.max(0, game.clocks[sideToMove] - elapsed);
+                    game.clocks[sideToMove] += game.timeControl.increment;
+                }
+
                 game.engine.make_move(mv);
                 const result = game.engine.game_result();
                 console.log(`[${gameId}] move ${uci} - result: ${result}`);
+
+                if (result !== "ongoing") {
+                    clearFlagTimer(game);
+                    game.result = result;
+                    game.clockActive = null;
+                } else {
+                    game.clockActive = sideToMove === "w" ? "b" : "w";
+                    game.lastTickAt = Date.now();
+                    scheduleFlagTimer(gameId, game);
+                }
 
                 const msg = JSON.stringify({
                     type: "move",
@@ -189,6 +267,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     isPromotion: mv.is_promotion(),
                     isCheck: game.engine.is_in_check(),
                     result,
+                    ...clockState(game),
                 });
 
                 game.white?.send(msg);
@@ -208,12 +287,13 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
 
             if (!game.white && !game.black) {
                 if (game.result || game.engine.game_result() !== "ongoing") {
+                    clearFlagTimer(game);
                     games.delete(gameId);
                     console.log(`[${gameId}] game cleaned up (finished)`);
                 } else {
                     console.log(`[${gameId}] both disconnected - starting abandon timer`);
                     game.abandonTimer = setTimeout(() => {
-                        game.result = "draw_agreed";
+                        clearFlagTimer(game);
                         games.delete(gameId);
                         console.log(`[${gameId}] game abandoned - removed`);
                     }, ABANDON_TIMEOUT_MS);

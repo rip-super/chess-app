@@ -21,6 +21,10 @@ let arrows = [];
 let rightDragFrom = null;
 let color = "w";
 let colorKnown = false;
+let clocks = { w: 10 * 60 * 1000, b: 10 * 60 * 1000 };
+let clockActive = null;
+let clockAt = null;
+let clockRafId = null;
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
@@ -32,6 +36,8 @@ const resignConfirm = document.getElementById("resign-confirm");
 const resignYes = document.getElementById("resign-yes");
 const resignNo = document.getElementById("resign-no");
 const connStatus = document.getElementById("connection-status");
+const clockTop = document.getElementById("clock-top");
+const clockBottom = document.getElementById("clock-bottom");
 
 resignBtn.addEventListener("pointerdown", () => {
     resignConfirm.classList.remove("hidden");
@@ -54,6 +60,62 @@ drawBtn.addEventListener("pointerdown", () => {
     drawBtn.disabled = true;
     drawBtn.textContent = "Draw offered";
 });
+
+function formatClock(ms) {
+    if (ms <= 0) return "0:00";
+    const totalSec = Math.ceil(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function getClockMs(c) {
+    if (clockActive === c && clockAt !== null) {
+        return Math.max(0, clocks[c] - (Date.now() - clockAt));
+    }
+    return Math.max(0, clocks[c]);
+}
+
+function updateClockDisplay() {
+    const opponentColor = color === "w" ? "b" : "w";
+
+    const topMs = getClockMs(opponentColor);
+    const bottomMs = getClockMs(color);
+
+    clockTop.textContent = formatClock(topMs);
+    clockBottom.textContent = formatClock(bottomMs);
+
+    clockTop.classList.toggle("active", clockActive === opponentColor);
+    clockBottom.classList.toggle("active", clockActive === color);
+
+    clockTop.classList.toggle("low", topMs > 0 && topMs < 15_000);
+    clockBottom.classList.toggle("low", bottomMs > 0 && bottomMs < 15_000);
+}
+
+function tickClocks() {
+    updateClockDisplay();
+    if (clockActive !== null) {
+        clockRafId = requestAnimationFrame(tickClocks);
+    }
+}
+
+function startClockTick() {
+    if (clockRafId) cancelAnimationFrame(clockRafId);
+    clockRafId = requestAnimationFrame(tickClocks);
+}
+
+function stopClockTick() {
+    if (clockRafId) { cancelAnimationFrame(clockRafId); clockRafId = null; }
+    updateClockDisplay();
+}
+
+function applyClockState(msg) {
+    if (msg.clocks) clocks = msg.clocks;
+    if (msg.clockActive !== undefined) clockActive = msg.clockActive;
+    if (msg.clockAt !== undefined) clockAt = Date.now();
+    if (clockActive !== null) startClockTick();
+    else stopClockTick();
+}
 
 function deselect() { selectedSq = null; legalTargets = []; }
 function selectSquare(sq) { selectedSq = sq; legalTargets = engine.legal_moves().filter(m => m.from_sq() === sq).map(m => m.to_sq()); }
@@ -246,6 +308,7 @@ function connect() {
 
         if (msg.type === "sync") {
             engine = ChessEngine.from_fen(msg.fen);
+            applyClockState(msg);
             deselect();
 
             if (!gameStarted) {
@@ -260,6 +323,8 @@ function connect() {
         if (msg.type === "move") {
             const isOwnMove = rollbackSnapshot !== null;
             rollbackSnapshot = null;
+
+            applyClockState(msg);
 
             if (!isOwnMove) {
                 const mv = engine.parse_uci(msg.uci);
@@ -351,6 +416,7 @@ function connect() {
 
         if (msg.type === "game_over") {
             sfx("game_end");
+            applyClockState({ clockActive: null });
             checkGameOver(msg.result);
             return;
         }
@@ -367,6 +433,7 @@ function uciToSq(coord) {
 
 function checkGameOver(result) {
     if (result === "ongoing") return;
+    stopClockTick();
 
     const msgs = {
         checkmate_white: { top: "Checkmate", bottom: "White wins!" },
@@ -378,9 +445,11 @@ function checkGameOver(result) {
         resign_white: { top: "Resignation", bottom: "Black wins!" },
         resign_black: { top: "Resignation", bottom: "White wins!" },
         draw_agreed: { top: "Draw", bottom: "By Mutual Agreement" },
+        timeout_white: { top: "Time Out", bottom: "Black wins!" },
+        timeout_black: { top: "Time Out", bottom: "White wins!" },
     };
 
-    const { top, bottom } = msgs[result];
+    const { top, bottom } = msgs[result] ?? { top: "Game Over", bottom: "" };
     const panel = document.createElement("div");
 
     panel.className = "gameover-panel";
@@ -447,12 +516,8 @@ function renderArrows(invert) {
             const ux2 = dx2 / len2, uy2 = dy2 / len2;
             const px2 = -uy2, py2 = ux2;
 
-            const shaftW = 0.09;
-            const headW = 0.22;
-            const headLen = 0.3;
-
-            const shaftEndX = tx - ux2 * headLen;
-            const shaftEndY = ty - uy2 * headLen;
+            const shaftW = 0.09, headW = 0.22, headLen = 0.3;
+            const shaftEndX = tx - ux2 * headLen, shaftEndY = ty - uy2 * headLen;
 
             const hlen = Math.sqrt(dx1 * dx1 + dy1 * dy1);
             const uhx = dx1 / hlen, uhy = dy1 / hlen;
@@ -477,9 +542,7 @@ function renderArrows(invert) {
             const ux = dx / len, uy = dy / len;
             const px = -uy, py = ux;
 
-            const shaftW = 0.09;
-            const headW = 0.22;
-            const headLen = 0.3;
+            const shaftW = 0.09, headW = 0.22, headLen = 0.3;
             const shaftEnd = 1 - headLen / len;
 
             const sx = fx + ux * 0.3, sy = fy + uy * 0.3;
@@ -711,3 +774,4 @@ document.addEventListener("pointerup", e => {
 });
 
 renderBoard();
+updateClockDisplay();
