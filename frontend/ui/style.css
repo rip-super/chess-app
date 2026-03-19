@@ -142,6 +142,7 @@ img {
     min-height: 1.2em;
     text-align: center;
     text-shadow: 0 1px 4px var(--shadow-text);
+    margin-top: -30px;
 }
 
 .dots::after {

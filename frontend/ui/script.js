@@ -10,15 +10,20 @@ const tcOverlay = document.getElementById("tc-overlay");
 const tcCancel = document.getElementById("tc-cancel");
 
 let activeInterval = null;
+let isMatchmaking = false;
 
 function cancelMatchmaking() {
+    isMatchmaking = false;
     if (activeInterval) { clearInterval(activeInterval); activeInterval = null; }
     playBtn.disabled = false;
+    playBtn.querySelector("span").textContent = "Play";
     statusText.innerHTML = "";
 }
 
 async function startMatchmaking(tc) {
-    playBtn.disabled = true;
+    isMatchmaking = true;
+    playBtn.disabled = false;
+    playBtn.querySelector("span").textContent = "Cancel";
     statusText.innerHTML = "Finding a game<span class='dots'></span>";
 
     try {
@@ -26,6 +31,7 @@ async function startMatchmaking(tc) {
         const data = await res.json();
 
         if (data.gameId && !data.waiting) {
+            isMatchmaking = false;
             localStorage.setItem("gameId", data.gameId);
             window.location.href = `/play/${data.gameId}`;
             return;
@@ -39,33 +45,35 @@ async function startMatchmaking(tc) {
                     const d = await r.json();
                     if (d.gameId) {
                         clearInterval(activeInterval); activeInterval = null;
+                        isMatchmaking = false;
                         localStorage.setItem("gameId", d.gameId);
                         window.location.href = `/play/${d.gameId}`;
                     } else if (d.error) {
-                        clearInterval(activeInterval); activeInterval = null;
+                        cancelMatchmaking();
                         statusText.textContent = "Timed out - try again.";
-                        playBtn.disabled = false;
                     }
-                } catch { clearInterval(activeInterval); activeInterval = null; playBtn.disabled = false; }
+                } catch { cancelMatchmaking(); }
             }, 500);
 
             setTimeout(() => {
-                if (activeInterval) {
-                    clearInterval(activeInterval); activeInterval = null;
-                    if (playBtn.disabled) {
-                        statusText.textContent = "Timed out - try again.";
-                        playBtn.disabled = false;
-                    }
+                if (activeInterval && isMatchmaking) {
+                    cancelMatchmaking();
+                    statusText.textContent = "Timed out - try again.";
                 }
             }, 30000);
         }
     } catch {
+        cancelMatchmaking();
         statusText.textContent = "Connection error - try again.";
-        playBtn.disabled = false;
     }
 }
 
 playBtn.addEventListener("click", () => {
+    if (isMatchmaking) {
+        cancelMatchmaking();
+        return;
+    }
+
     tcOverlay.classList.remove("hidden");
 });
 
