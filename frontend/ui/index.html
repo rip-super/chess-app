@@ -71,6 +71,53 @@
         </div>
     </div>
 
+    <div id="settings-overlay" class="modal-overlay hidden">
+        <div class="settings-panel">
+            <div class="settings-header-row">
+                <div class="tc-header">Settings</div>
+                <button id="settings-close" class="icon-close" aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                        width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="settings-body">
+                <div class="settings-section">
+                    <label class="settings-label" for="username-input">Username</label>
+                    <input id="username-input" class="settings-input" type="text" maxlength="20" placeholder="Enter username" value="Guest">
+                </div>
+
+                <div class="settings-pickers-row">
+                    <div class="settings-section">
+                        <div class="settings-label">Theme</div>
+                        <div id="theme-picker" class="option-picker theme-picker"></div>
+                    </div>
+
+                    <div class="settings-section">
+                        <div class="settings-label">Piece set</div>
+                        <div id="piece-picker" class="option-picker piece-picker"></div>
+                    </div>
+                </div>
+
+                <div class="settings-preview-wrap">
+                    <div class="settings-preview-card">
+                        <div id="settings-preview-board" class="settings-preview-board"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-actions">
+                <button id="settings-reset" class="btn settings-reset-btn">Reset</button>
+                <div class="settings-actions-right">
+                    <button id="settings-cancel" class="btn settings-cancel-btn">Cancel</button>
+                    <button id="settings-save" class="btn settings-save-btn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 

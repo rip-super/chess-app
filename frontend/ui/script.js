@@ -8,9 +8,238 @@ const settingsBtn = document.getElementById("settings-btn");
 const statusText = document.getElementById("status");
 const tcOverlay = document.getElementById("tc-overlay");
 const tcCancel = document.getElementById("tc-cancel");
+const settingsOverlay = document.getElementById("settings-overlay");
+const settingsClose = document.getElementById("settings-close");
+const settingsCancel = document.getElementById("settings-cancel");
+const settingsSave = document.getElementById("settings-save");
+const settingsReset = document.getElementById("settings-reset");
+const usernameInput = document.getElementById("username-input");
+const themePicker = document.getElementById("theme-picker");
+const piecePicker = document.getElementById("piece-picker");
+const previewBoard = document.getElementById("settings-preview-board");
 
 let activeInterval = null;
 let isMatchmaking = false;
+const previewSquares = [];
+let previewBoardBuilt = false;
+let previewRenderToken = 0;
+
+const DEFAULT_SETTINGS = {
+    username: "Guest",
+    theme: "classic",
+    pieceSet: "standard",
+};
+
+const previewThemes = {
+    classic: { light: "#d9e4e8", dark: "#7b9eb2", panel: "#182229" },
+    "chess.com": { light: "#EBECD0", dark: "#739552", panel: "#1f2a1a" },
+    lichess: { light: "#f0d9b5", dark: "#b58863", panel: "#201a17" },
+    arctic: { light: "#eef9ff", dark: "#4d9fd1", panel: "#0d1e28" },
+    ember: { light: "#ffe1cc", dark: "#d65a31", panel: "#2b120c" },
+    amethyst: { light: "#f1e4ff", dark: "#7b4bc4", panel: "#1d1430" },
+    lagoon: { light: "#dffbf7", dark: "#1f9e89", panel: "#0d201d" },
+    rose: { light: "#ffd9e8", dark: "#d65f93", panel: "#2a1520" },
+    brass: { light: "#fff0c7", dark: "#b8891f", panel: "#241a0c" },
+    crimson: { light: "#ffd8d8", dark: "#b23a48", panel: "#2a1014" },
+    nebula: { light: "#e6e0ff", dark: "#5b5bd6", panel: "#151533" },
+    mint: { light: "#e4fff1", dark: "#4fa87d", panel: "#102019" },
+    plum: { light: "#f3ddf2", dark: "#944e9a", panel: "#231226" },
+    obsidian: { light: "#9ea7b3", dark: "#1f2937", panel: "#0a0f18" },
+    retro: { light: "#f7e7b7", dark: "#6f8f5f", panel: "#1b2116" },
+};
+
+const pieceSets = [
+    "standard", "alpha", "caliente", "california", "cardinal", "cburnett", "celtic",
+    "chess7", "chessnut", "companion", "cooke", "fantasy", "fresca", "gioco", "lolz",
+    "governor", "horsey", "icpieces", "kiwen-suwi", "kosal", "leipzig", "letter",
+    "maestro", "merida", "monarchy", "mpchess", "neo", "pixel", "reillycraig",
+    "riohacha", "shapes", "spatial", "staunty", "tatiana", "xkcd",
+];
+
+const previewPosition = {
+    0: "bR",
+    1: "bN",
+    2: "bB",
+    3: "bK",
+    4: "bP",
+    6: "bP",
+    9: "wP",
+    11: "bP",
+    12: "wQ",
+    13: "wP",
+    14: "wN",
+    15: "wK",
+};
+
+const pieceExt = {
+    standard: "png",
+    lolz: "png",
+    neo: "png",
+    monarchy: "webp",
+};
+
+let selectedTheme = DEFAULT_SETTINGS.theme;
+let selectedPieceSet = DEFAULT_SETTINGS.pieceSet;
+
+function preloadImage(src) {
+    return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => resolve({ ok: true, src });
+        img.onerror = () => resolve({ ok: false, src });
+        img.src = src;
+    });
+}
+
+function getPieceAssetPath(pieceSet, pieceCode) {
+    return `play/assets/images/${pieceSet}/${pieceCode}.${pieceExt[pieceSet] || "svg"}`;
+}
+
+function renderSettingsUI() {
+    themePicker.innerHTML = "";
+    piecePicker.innerHTML = "";
+
+    for (const [themeName, palette] of Object.entries(previewThemes)) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "option-tile";
+        if (themeName === selectedTheme) button.classList.add("active");
+        button.dataset.theme = themeName;
+
+        const swatch = document.createElement("div");
+        swatch.className = "theme-swatch";
+
+        for (let i = 0; i < 4; i++) {
+            const sq = document.createElement("div");
+            sq.className = "theme-swatch-square";
+            sq.style.background = i % 2 === 0 ? palette.light : palette.dark;
+            swatch.appendChild(sq);
+        }
+
+        const label = document.createElement("span");
+        label.className = "option-tile-name";
+        label.textContent = themeName[0].toUpperCase() + themeName.slice(1);
+
+        button.appendChild(swatch);
+        button.appendChild(label);
+        themePicker.appendChild(button);
+    }
+
+    for (const setName of pieceSets) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "piece-option";
+        if (setName === selectedPieceSet) button.classList.add("active");
+        button.dataset.pieceSet = setName;
+
+        const img = document.createElement("img");
+        img.className = "piece-option-thumb";
+        img.src = getPieceAssetPath(setName, "wN");
+        img.alt = `${setName} knight`;
+
+        const label = document.createElement("span");
+        label.className = "piece-option-name";
+        label.textContent = setName
+            .split("-")
+            .map(part => part[0].toUpperCase() + part.slice(1))
+            .join(" ");
+
+        button.appendChild(img);
+        button.appendChild(label);
+        piecePicker.appendChild(button);
+    }
+}
+
+function openSettings() {
+    settingsOverlay.classList.remove("hidden");
+    renderSettingsUI();
+    renderSettingsPreview();
+}
+
+function closeSettings() {
+    settingsOverlay.classList.add("hidden");
+}
+
+function resetSettingsForm() {
+    usernameInput.value = DEFAULT_SETTINGS.username;
+    selectedTheme = DEFAULT_SETTINGS.theme;
+    selectedPieceSet = DEFAULT_SETTINGS.pieceSet;
+    renderSettingsUI();
+    renderSettingsPreview();
+}
+
+function buildSettingsPreviewBoard() {
+    if (previewBoardBuilt) return;
+
+    previewBoard.innerHTML = "";
+    previewSquares.length = 0;
+
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 4; col++) {
+            const sq = row * 4 + col;
+
+            const square = document.createElement("div");
+            square.className = "preview-square";
+
+            const img = document.createElement("img");
+            img.className = "preview-piece";
+            img.alt = "";
+            img.draggable = false;
+            img.style.display = "none";
+
+            square.appendChild(img);
+            previewBoard.appendChild(square);
+
+            previewSquares.push({
+                square,
+                img,
+                index: sq,
+            });
+        }
+    }
+
+    previewBoardBuilt = true;
+}
+
+async function renderSettingsPreview() {
+    const renderToken = ++previewRenderToken;
+    const palette = previewThemes[selectedTheme] || previewThemes.classic;
+
+    buildSettingsPreviewBoard();
+    previewBoard.style.background = palette.panel;
+
+    const imageSources = [];
+
+    for (const item of previewSquares) {
+        const row = Math.floor(item.index / 4);
+        const col = item.index % 4;
+        item.square.style.background = (row + col) % 2 === 0 ? palette.light : palette.dark;
+
+        const pieceCode = previewPosition[item.index];
+        if (pieceCode) {
+            imageSources.push(getPieceAssetPath(selectedPieceSet, pieceCode));
+        }
+    }
+
+    const uniqueSources = [...new Set(imageSources)];
+    await Promise.all(uniqueSources.map(preloadImage));
+
+    if (renderToken !== previewRenderToken) return;
+
+    for (const item of previewSquares) {
+        const pieceCode = previewPosition[item.index];
+
+        if (!pieceCode) {
+            item.img.style.display = "none";
+            item.img.removeAttribute("src");
+            item.img.alt = "";
+            continue;
+        }
+
+        item.img.src = getPieceAssetPath(selectedPieceSet, pieceCode);
+        item.img.alt = pieceCode;
+        item.img.style.display = "block";
+    }
+}
 
 function cancelMatchmaking() {
     isMatchmaking = false;
@@ -44,7 +273,8 @@ async function startMatchmaking(tc) {
                     const r = await fetch(`/match/${gameId}?tc=${encodeURIComponent(tc)}`);
                     const d = await r.json();
                     if (d.gameId) {
-                        clearInterval(activeInterval); activeInterval = null;
+                        clearInterval(activeInterval);
+                        activeInterval = null;
                         isMatchmaking = false;
                         localStorage.setItem("gameId", d.gameId);
                         window.location.href = `/play/${d.gameId}`;
@@ -52,7 +282,9 @@ async function startMatchmaking(tc) {
                         cancelMatchmaking();
                         statusText.textContent = "Timed out - try again.";
                     }
-                } catch { cancelMatchmaking(); }
+                } catch {
+                    cancelMatchmaking();
+                }
             }, 500);
 
             setTimeout(() => {
@@ -82,6 +314,13 @@ tcCancel.addEventListener("click", () => {
     cancelMatchmaking();
 });
 
+tcOverlay.addEventListener("mousedown", e => {
+    if (e.target === tcOverlay) {
+        tcOverlay.classList.add("hidden");
+        cancelMatchmaking();
+    }
+});
+
 document.querySelectorAll(".tc-btn").forEach(btn => {
     btn.addEventListener("click", () => {
         tcOverlay.classList.add("hidden");
@@ -90,7 +329,56 @@ document.querySelectorAll(".tc-btn").forEach(btn => {
 });
 
 settingsBtn.addEventListener("click", () => {
-    statusText.textContent = "TODO: Settings";
+    openSettings();
+});
+
+settingsClose.addEventListener("click", closeSettings);
+settingsCancel.addEventListener("click", closeSettings);
+
+settingsSave.addEventListener("click", () => {
+    closeSettings();
+    statusText.textContent = "Settings UI saved (not wired up yet).";
+});
+
+settingsReset.addEventListener("click", () => {
+    resetSettingsForm();
+});
+
+settingsOverlay.addEventListener("mousedown", e => {
+    if (e.target === settingsOverlay) closeSettings();
+});
+
+usernameInput.addEventListener("input", () => { });
+
+document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+
+    if (!settingsOverlay.classList.contains("hidden")) {
+        closeSettings();
+        return;
+    }
+
+    if (!tcOverlay.classList.contains("hidden")) {
+        tcOverlay.classList.add("hidden");
+    }
+});
+
+themePicker.addEventListener("click", e => {
+    const btn = e.target.closest(".option-tile");
+    if (!btn) return;
+
+    selectedTheme = btn.dataset.theme;
+    renderSettingsUI();
+    renderSettingsPreview();
+});
+
+piecePicker.addEventListener("click", e => {
+    const btn = e.target.closest(".piece-option");
+    if (!btn) return;
+
+    selectedPieceSet = btn.dataset.pieceSet;
+    renderSettingsUI();
+    renderSettingsPreview();
 });
 
 if (sessionStorage.getItem("autoplay")) {
@@ -142,6 +430,7 @@ function bgDraw(ts) {
     requestAnimationFrame(bgDraw);
 }
 
+resetSettingsForm();
 window.addEventListener("resize", bgResize);
 bgResize();
 requestAnimationFrame(bgDraw);
