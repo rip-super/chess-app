@@ -1,5 +1,3 @@
-// TODO: premoves?
-
 import init, { ChessEngine } from "../wasm/wasm.js";
 
 await init();
@@ -28,6 +26,8 @@ let clockRafId = null;
 let disconnectBanner = null;
 let disconnectCountdownId = null;
 let clockLowPlayed = { w: false, b: false };
+let selectedIsPremove = false;
+let premoveQueue = [];
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
@@ -41,6 +41,23 @@ const resignNo = document.getElementById("resign-no");
 const connStatus = document.getElementById("connection-status");
 const clockTop = document.getElementById("clock-top");
 const clockBottom = document.getElementById("clock-bottom");
+
+function pieceColor(piece) {
+    return piece ? piece[0] : null;
+}
+
+function setFenSideToMove(fen, side) {
+    const parts = fen.split(" ");
+    parts[1] = side;
+    return parts.join(" ");
+}
+
+function clearPremoves(shouldRender = true) {
+    premoveQueue = [];
+    if (selectedIsPremove) deselect();
+    if (pendingPromotion?.premove) pendingPromotion = null;
+    if (shouldRender) renderBoard(color === "b");
+}
 
 resignBtn.addEventListener("pointerdown", () => {
     resignConfirm.classList.remove("hidden");
@@ -133,13 +150,64 @@ function applyClockState(msg) {
     else stopClockTick();
 }
 
-function deselect() { selectedSq = null; legalTargets = []; }
-function selectSquare(sq) { selectedSq = sq; legalTargets = engine.legal_moves().filter(m => m.from_sq() === sq).map(m => m.to_sq()); }
+function deselect() {
+    selectedSq = null;
+    legalTargets = [];
+    selectedIsPremove = false;
+}
 
-function isPromotion(fromSq, toSq) {
-    const piece = engine.piece_on(fromSq);
-    if (piece !== "wP" && piece !== "bP") return false;
-    return Math.floor(toSq / 8) === 7 || Math.floor(toSq / 8) === 0;
+function selectSquare(sq, premove = false) {
+    selectedSq = sq;
+    selectedIsPremove = premove;
+
+    let srcEngine = engine;
+
+    if (premove) {
+        srcEngine = ChessEngine.from_fen(engine.get_fen());
+
+        for (const uci of premoveQueue) {
+            if (srcEngine.side_to_move() !== color) {
+                srcEngine = ChessEngine.from_fen(setFenSideToMove(srcEngine.get_fen(), color));
+            }
+
+            const mv = srcEngine.parse_uci(uci);
+            if (!mv) break;
+
+            try {
+                srcEngine.make_move(mv);
+            } catch {
+                break;
+            }
+        }
+
+        if (srcEngine.side_to_move() !== color) {
+            srcEngine = ChessEngine.from_fen(setFenSideToMove(srcEngine.get_fen(), color));
+        }
+    }
+
+    legalTargets = srcEngine.legal_moves()
+        .filter(m => m.from_sq() === sq)
+        .map(m => m.to_sq());
+
+    if (premove) {
+        const piece = srcEngine.piece_on(sq);
+
+        if (piece === "wP") {
+            const file = sq % 8;
+            const rank = Math.floor(sq / 8);
+
+            if (file > 0 && rank < 7) legalTargets.push(sq + 7);
+            if (file < 7 && rank < 7) legalTargets.push(sq + 9);
+        } else if (piece === "bP") {
+            const file = sq % 8;
+            const rank = Math.floor(sq / 8);
+
+            if (file > 0 && rank > 0) legalTargets.push(sq - 9);
+            if (file < 7 && rank > 0) legalTargets.push(sq - 7);
+        }
+
+        legalTargets = [...new Set(legalTargets)];
+    }
 }
 
 function pushMove(uci) {
@@ -222,9 +290,13 @@ if (!token) { token = crypto.randomUUID(); localStorage.setItem("token", token);
 
 const gameId = window.location.pathname.split("/").pop();
 
-function sendMove(uci) {
+function sendMove(uci, opts = {}) {
+    const { preservePremoves = false } = opts;
+
     const mv = engine.parse_uci(uci);
     if (!mv) return;
+
+    if (!preservePremoves) premoveQueue = [];
 
     const fromSq = uciToSq(uci.slice(0, 2));
     const toSq = uciToSq(uci.slice(2, 4));
@@ -233,7 +305,12 @@ function sendMove(uci) {
     const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
     const pieceCode = engine.piece_on(fromSq);
 
-    rollbackSnapshot = { fen: engine.get_fen(), lastMove, moveHistory: [...moveHistory] };
+    rollbackSnapshot = {
+        fen: engine.get_fen(),
+        lastMove,
+        moveHistory: [...moveHistory],
+        premoveQueue: [...premoveQueue],
+    };
 
     let san = uciToSan(uci);
     engine.make_move(mv);
@@ -296,6 +373,7 @@ function connect() {
                 engine = ChessEngine.from_fen(rollbackSnapshot.fen);
                 lastMove = rollbackSnapshot.lastMove;
                 moveHistory = rollbackSnapshot.moveHistory;
+                premoveQueue = rollbackSnapshot.premoveQueue ?? [];
 
                 const lastPair = moveLog.lastElementChild;
                 if (lastPair) {
@@ -330,6 +408,7 @@ function connect() {
 
         if (msg.type === "sync") {
             engine = ChessEngine.from_fen(msg.fen);
+            clearPremoves(false);
             applyClockState(msg);
             deselect();
 
@@ -389,8 +468,22 @@ function connect() {
                 Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
                 anim.addEventListener("transitionend", () => {
                     anim.remove();
-                    animating = false; animatingToSq = null;
+                    animating = false;
+                    animatingToSq = null;
                     renderBoard(color === "b");
+
+                    if (msg.result === "ongoing" && premoveQueue.length > 0 && engine.side_to_move() === color && !pendingPromotion) {
+                        const nextUci = premoveQueue[0];
+                        const legal = engine.legal_moves().some(m => m.to_uci() === nextUci);
+
+                        if (!legal) {
+                            clearPremoves();
+                        } else {
+                            premoveQueue.shift();
+                            sendMove(nextUci, { preservePremoves: true });
+                        }
+                    }
+
                     checkGameOver(msg.result);
                 }, { once: true });
             } else {
@@ -649,6 +742,34 @@ function renderBoard(invert = false) {
         }
     }
 
+    let displayEngine = engine;
+
+    if (premoveQueue.length > 0) {
+        displayEngine = ChessEngine.from_fen(engine.get_fen());
+
+        for (const uci of premoveQueue) {
+            if (displayEngine.side_to_move() !== color) {
+                displayEngine = ChessEngine.from_fen(setFenSideToMove(displayEngine.get_fen(), color));
+            }
+
+            const mv = displayEngine.parse_uci(uci);
+            if (!mv) break;
+
+            try {
+                displayEngine.make_move(mv);
+            } catch {
+                break;
+            }
+        }
+    }
+
+    const premoveFrom = new Set();
+    const premoveTo = new Set();
+    for (const uci of premoveQueue) {
+        premoveFrom.add(uciToSq(uci.slice(0, 2)));
+        premoveTo.add(uciToSq(uci.slice(2, 4)));
+    }
+
     const inCheck = engine.is_in_check();
     const kingSq = inCheck ? engine.king_square(engine.side_to_move()) : null;
     const sqs = board.querySelectorAll(".sq");
@@ -658,7 +779,7 @@ function renderBoard(invert = false) {
             const rank = invert ? row : 7 - row;
             const file = invert ? 7 - col : col;
             const sqIndex = rank * 8 + file;
-            const piece = engine.piece_on(sqIndex);
+            const piece = displayEngine.piece_on(sqIndex);
             const div = sqs[row * 8 + col];
 
             div.className = "sq " + ((rank + file) % 2 === 0 ? "dark" : "light");
@@ -669,6 +790,8 @@ function renderBoard(invert = false) {
             if (sqIndex === kingSq) div.classList.add("in-check");
             if (lastMove && (sqIndex === lastMove.from || sqIndex === lastMove.to)) div.classList.add("last-move");
             if (arrowHighlights.has(sqIndex)) div.classList.add("arrow-highlight");
+            if (premoveFrom.has(sqIndex)) div.classList.add("premove-from");
+            if (premoveTo.has(sqIndex)) div.classList.add("premove-to");
 
             let img = div.querySelector("img.piece");
             if (colorKnown) {
@@ -719,7 +842,17 @@ function renderBoard(invert = false) {
             btn.addEventListener("pointerdown", e => {
                 e.stopPropagation();
                 const uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}${p.toLowerCase()}`;
-                sendMove(uci); pendingPromotion = null; deselect(); renderBoard(invert);
+
+                if (pendingPromotion.premove) {
+                    premoveQueue.push(uci);
+                    renderBoard(invert);
+                } else {
+                    sendMove(uci);
+                }
+
+                pendingPromotion = null;
+                deselect();
+                renderBoard(invert);
             });
 
             card.appendChild(btn);
@@ -733,11 +866,19 @@ function renderBoard(invert = false) {
 
 board.addEventListener("contextmenu", e => e.preventDefault());
 
+document.addEventListener("pointerdown", e => {
+    if (e.button === 2 && premoveQueue.length > 0) {
+        clearPremoves();
+    }
+}, true);
+
 board.addEventListener("pointerdown", e => {
     if (e.button === 2) {
+        clearPremoves(false);
         const div = e.target.closest(".sq");
         if (!div) return;
         rightDragFrom = parseInt(div.dataset.sq);
+        renderBoard(color === "b");
         return;
     }
 
@@ -753,25 +894,100 @@ board.addEventListener("pointerdown", e => {
 
     if (!gameStarted) return;
     if (animating) return;
-    if (engine.side_to_move() !== color) return;
     e.preventDefault();
 
-    const piece = engine.piece_on(sqIndex);
+    const ourTurn = engine.side_to_move() === color;
+
+    let interactionEngine = engine;
+    if (!ourTurn) {
+        interactionEngine = ChessEngine.from_fen(engine.get_fen());
+
+        for (const uci of premoveQueue) {
+            if (interactionEngine.side_to_move() !== color) {
+                interactionEngine = ChessEngine.from_fen(setFenSideToMove(interactionEngine.get_fen(), color));
+            }
+
+            const mv = interactionEngine.parse_uci(uci);
+            if (!mv) break;
+
+            try {
+                interactionEngine.make_move(mv);
+            } catch {
+                break;
+            }
+        }
+
+        if (interactionEngine.side_to_move() !== color) {
+            interactionEngine = ChessEngine.from_fen(setFenSideToMove(interactionEngine.get_fen(), color));
+        }
+    }
+
+    const piece = interactionEngine.piece_on(sqIndex);
 
     if (selectedSq !== null && legalTargets.includes(sqIndex)) {
         const fromSq = selectedSq;
-        const mv = engine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === sqIndex);
-        if (!mv) return;
-        if (isPromotion(fromSq, sqIndex)) {
-            pendingPromotion = { fromSq, toSq: sqIndex };
-            deselect(); renderBoard(color === "b"); return;
+
+        const movingPiece = interactionEngine.piece_on(fromSq);
+        const isPromo = movingPiece &&
+            movingPiece[1] === "P" &&
+            (Math.floor(sqIndex / 8) === 7 || Math.floor(sqIndex / 8) === 0);
+
+        if (isPromo) {
+            pendingPromotion = { fromSq, toSq: sqIndex, premove: !ourTurn };
+            deselect();
+            renderBoard(color === "b");
+            return;
         }
-        sendMove(mv.to_uci()); deselect(); return;
+
+        const mv = interactionEngine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === sqIndex);
+
+        if (ourTurn) {
+            if (!mv) return;
+            sendMove(mv.to_uci());
+        } else {
+            let uci = mv?.to_uci();
+
+            if (!uci) {
+                const movingPiece = interactionEngine.piece_on(fromSq);
+                const fromFile = fromSq % 8;
+                const toFile = sqIndex % 8;
+
+                const isPawnDiagonal =
+                    movingPiece &&
+                    movingPiece[1] === "P" &&
+                    Math.abs(toFile - fromFile) === 1;
+
+                if (!isPawnDiagonal) return;
+
+                uci =
+                    `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}` +
+                    `${"abcdefgh"[sqIndex % 8]}${Math.floor(sqIndex / 8) + 1}`;
+            }
+
+            premoveQueue.push(uci);
+            deselect();
+            arrowHighlights.clear();
+            arrows = [];
+            renderBoard(color === "b");
+        }
+
+        deselect();
+        return;
     }
 
-    if (piece) { pendingPointer = { sqIndex, piece, startX: e.clientX, startY: e.clientY }; return; }
+    if (piece && pieceColor(piece) === color) {
+        pendingPointer = {
+            sqIndex,
+            piece,
+            startX: e.clientX,
+            startY: e.clientY,
+            premove: !ourTurn,
+        };
+        return;
+    }
 
-    deselect(); renderBoard(color === "b");
+    deselect();
+    renderBoard(color === "b");
 });
 
 board.addEventListener("pointerup", e => {
@@ -804,8 +1020,8 @@ document.addEventListener("pointermove", e => {
         Object.assign(ghost.style, { left: e.clientX + "px", top: e.clientY + "px" });
         document.body.appendChild(ghost);
 
-        dragState = { fromSq: sqIndex, ghostEl: ghost };
-        selectSquare(sqIndex);
+        dragState = { fromSq: sqIndex, ghostEl: ghost, premove: pendingPointer.premove };
+        selectSquare(sqIndex, pendingPointer.premove);
         renderBoard(color === "b");
     }
 
@@ -814,9 +1030,9 @@ document.addEventListener("pointermove", e => {
 
 document.addEventListener("pointerup", e => {
     if (pendingPointer && !dragState) {
-        const { sqIndex } = pendingPointer;
+        const { sqIndex, premove } = pendingPointer;
         pendingPointer = null;
-        selectedSq === sqIndex ? deselect() : selectSquare(sqIndex);
+        selectedSq === sqIndex ? deselect() : selectSquare(sqIndex, premove);
         renderBoard(color === "b");
         return;
     }
@@ -825,20 +1041,81 @@ document.addEventListener("pointerup", e => {
     if (!dragState) return;
 
     dragState.ghostEl.remove();
-    const { fromSq } = dragState;
+    const { fromSq, premove } = dragState;
     dragState = null;
 
     const toSq = parseInt(document.elementFromPoint(e.clientX, e.clientY)?.closest(".sq")?.dataset.sq);
     if (!isNaN(toSq) && toSq !== fromSq && legalTargets.includes(toSq)) {
-        if (isPromotion(fromSq, toSq)) {
-            pendingPromotion = { fromSq, toSq };
+        let interactionEngine = engine;
+
+        if (premove) {
+            interactionEngine = ChessEngine.from_fen(engine.get_fen());
+
+            for (const uci of premoveQueue) {
+                if (interactionEngine.side_to_move() !== color) {
+                    interactionEngine = ChessEngine.from_fen(setFenSideToMove(interactionEngine.get_fen(), color));
+                }
+
+                const mv = interactionEngine.parse_uci(uci);
+                if (!mv) break;
+
+                try {
+                    interactionEngine.make_move(mv);
+                } catch {
+                    break;
+                }
+            }
+
+            if (interactionEngine.side_to_move() !== color) {
+                interactionEngine = ChessEngine.from_fen(setFenSideToMove(interactionEngine.get_fen(), color));
+            }
+        }
+
+        const movingPiece = interactionEngine.piece_on(fromSq);
+        const isPromo = movingPiece &&
+            movingPiece[1] === "P" &&
+            (Math.floor(toSq / 8) === 7 || Math.floor(toSq / 8) === 0);
+
+        if (isPromo) {
+            pendingPromotion = { fromSq, toSq, premove };
             deselect();
             renderBoard(color === "b");
             return;
         }
 
-        const mv = engine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === toSq);
-        if (mv) { sendMove(mv.to_uci()); deselect(); }
+        const mv = interactionEngine.legal_moves().find(m => m.from_sq() === fromSq && m.to_sq() === toSq);
+
+        if (premove) {
+            let uci = mv?.to_uci();
+
+            if (!uci) {
+                const movingPiece = interactionEngine.piece_on(fromSq);
+                const fromFile = fromSq % 8;
+                const toFile = toSq % 8;
+
+                const isPawnDiagonal =
+                    movingPiece &&
+                    movingPiece[1] === "P" &&
+                    Math.abs(toFile - fromFile) === 1;
+
+                if (!isPawnDiagonal) {
+                    deselect();
+                    renderBoard(color === "b");
+                    return;
+                }
+
+                uci =
+                    `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}` +
+                    `${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}`;
+            }
+
+            premoveQueue.push(uci);
+            renderBoard(color === "b");
+            deselect();
+        } else if (mv) {
+            sendMove(mv.to_uci());
+            deselect();
+        }
     } else {
         deselect();
     }

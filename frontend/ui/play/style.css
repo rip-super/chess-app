@@ -150,12 +150,16 @@ body {
     background-color: var(--sq-last-move-dark);
 }
 
-.sq.light.arrow-highlight {
-    background-color: #D97B72;
+.sq.light.arrow-highlight,
+.sq.light.premove-from,
+.sq.light.premove-to {
+    background-color: #d97b72;
 }
 
-.sq.dark.arrow-highlight {
-    background-color: #C4584E;
+.sq.dark.arrow-highlight,
+.sq.dark.premove-from,
+.sq.dark.premove-to {
+    background-color: #c4584e;
 }
 
 .piece {
