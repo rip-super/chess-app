@@ -845,6 +845,7 @@ function renderBoard(invert = false) {
 
                 if (pendingPromotion.premove) {
                     premoveQueue.push(uci);
+                    sfx("premove");
                     renderBoard(invert);
                 } else {
                     sendMove(uci);
@@ -965,6 +966,7 @@ board.addEventListener("pointerdown", e => {
             }
 
             premoveQueue.push(uci);
+            sfx("premove");
             deselect();
             arrowHighlights.clear();
             arrows = [];
@@ -1072,9 +1074,7 @@ document.addEventListener("pointerup", e => {
         }
 
         const movingPiece = interactionEngine.piece_on(fromSq);
-        const isPromo = movingPiece &&
-            movingPiece[1] === "P" &&
-            (Math.floor(toSq / 8) === 7 || Math.floor(toSq / 8) === 0);
+        const isPromo = movingPiece && movingPiece[1] === "P" && (Math.floor(toSq / 8) === 7 || Math.floor(toSq / 8) === 0);
 
         if (isPromo) {
             pendingPromotion = { fromSq, toSq, premove };
@@ -1104,12 +1104,11 @@ document.addEventListener("pointerup", e => {
                     return;
                 }
 
-                uci =
-                    `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}` +
-                    `${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}`;
+                uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}` + `${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}`;
             }
 
             premoveQueue.push(uci);
+            sfx("premove");
             renderBoard(color === "b");
             deselect();
         } else if (mv) {
