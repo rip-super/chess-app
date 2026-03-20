@@ -337,6 +337,11 @@ img {
     gap: 20px;
 }
 
+.settings-header {
+    font-size: 18px;
+    font-weight: bold;
+}
+
 .settings-header-row {
     display: flex;
     align-items: center;
