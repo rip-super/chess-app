@@ -24,12 +24,6 @@ const previewSquares = [];
 let previewBoardBuilt = false;
 let previewRenderToken = 0;
 
-const DEFAULT_SETTINGS = {
-    username: "Guest",
-    theme: "classic",
-    pieceSet: "standard",
-};
-
 const previewThemes = {
     classic: { light: "#d9e4e8", dark: "#7b9eb2", panel: "#182229" },
     "chess.com": { light: "#EBECD0", dark: "#739552", panel: "#1f2a1a" },
@@ -78,8 +72,32 @@ const pieceExt = {
     monarchy: "webp",
 };
 
+const DEFAULT_SETTINGS = {
+    username: generateUsername(),
+    theme: "classic",
+    pieceSet: "standard",
+};
+
 let selectedTheme = DEFAULT_SETTINGS.theme;
 let selectedPieceSet = DEFAULT_SETTINGS.pieceSet;
+
+function generateUsername() {
+    const adjectives = [
+        "Quiet", "Swift", "Bold", "Silver", "Golden",
+        "Rapid", "Calm", "Shadow", "Royal", "Clever"
+    ];
+
+    const chessWords = [
+        "Pawn", "Knight", "Bishop", "Rook", "Queen",
+        "King", "Castle", "Fork", "Pin", "Gambit"
+    ];
+
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const chessWord = chessWords[Math.floor(Math.random() * chessWords.length)];
+    const number = Math.floor(Math.random() * 90) + 10;
+
+    return `${adjective}${chessWord}${number}`;
+}
 
 function preloadImage(src) {
     return new Promise(resolve => {
@@ -160,7 +178,7 @@ function closeSettings() {
 }
 
 function resetSettingsForm() {
-    usernameInput.value = DEFAULT_SETTINGS.username;
+    usernameInput.value = generateUsername();
     selectedTheme = DEFAULT_SETTINGS.theme;
     selectedPieceSet = DEFAULT_SETTINGS.pieceSet;
     renderSettingsUI();
@@ -336,6 +354,10 @@ settingsClose.addEventListener("click", closeSettings);
 settingsCancel.addEventListener("click", closeSettings);
 
 settingsSave.addEventListener("click", () => {
+    if (!usernameInput.value.trim()) {
+        usernameInput.value = generateUsername();
+    }
+
     closeSettings();
     statusText.textContent = "Settings UI saved (not wired up yet).";
 });
