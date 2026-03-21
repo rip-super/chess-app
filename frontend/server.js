@@ -351,21 +351,17 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             else { game.black = null; console.log(`[${gameId}] black disconnected`); }
 
             const remaining = game.white ?? game.black;
+            const isFinished = !!(game.result || game.engine.game_result() !== "ongoing");
 
             if (!game.white && !game.black) {
                 clearDisconnectTimer(game);
-                if (game.result || game.engine.game_result() !== "ongoing") {
-                    clearFlagTimer(game);
+                clearFlagTimer(game);
+
+                game.abandonTimer = setTimeout(() => {
                     games.delete(gameId);
-                    console.log(`[${gameId}] game cleaned up (finished)`);
-                } else {
-                    game.abandonTimer = setTimeout(() => {
-                        clearFlagTimer(game);
-                        games.delete(gameId);
-                        console.log(`[${gameId}] game abandoned - removed`);
-                    }, ABANDON_TIMEOUT_MS);
-                }
-            } else if (remaining && !game.result && game.engine.game_result() === "ongoing") {
+                    console.log(`[${gameId}] game cleaned up (both disconnected)`);
+                }, isFinished ? 30_000 : ABANDON_TIMEOUT_MS);
+            } else if (remaining && !isFinished) {
                 const CLAIM_TIMEOUT_MS = 60 * 1000;
                 remaining.send(JSON.stringify({ type: "opponent_disconnected", claimInMs: CLAIM_TIMEOUT_MS }));
                 game.disconnectTimer = setTimeout(() => {

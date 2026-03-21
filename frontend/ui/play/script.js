@@ -5,20 +5,20 @@ let engine = new ChessEngine();
 
 const themes = {
     classic: { light: "#d9e4e8", dark: "#7b9eb2", lastMoveLight: "#5ab5d0", lastMoveDark: "#4a9ab8", selected: "#6cbad2" },
-    "chess.com": { light: "#EBECD0", dark: "#739552", lastMoveLight: "#c9ca7e", lastMoveDark: "#a0b832", selected: "#b8c740" },
-    lichess: { light: "#f0d9b5", dark: "#b58863", lastMoveLight: "#d4a843", lastMoveDark: "#b06828", selected: "#d4a830" },
-    arctic: { light: "#eef9ff", dark: "#4d9fd1", lastMoveLight: "#8dd4f5", lastMoveDark: "#2a7cb0", selected: "#7acde8" },
-    ember: { light: "#ffe1cc", dark: "#d65a31", lastMoveLight: "#ffb07a", lastMoveDark: "#a82e10", selected: "#ffaa66" },
-    amethyst: { light: "#f1e4ff", dark: "#7b4bc4", lastMoveLight: "#c99af5", lastMoveDark: "#4e2090", selected: "#c090f0" },
-    lagoon: { light: "#dffbf7", dark: "#1f9e89", lastMoveLight: "#7de8d8", lastMoveDark: "#0a6e5c", selected: "#6de0cc" },
-    rose: { light: "#ffd9e8", dark: "#d65f93", lastMoveLight: "#ff9ec4", lastMoveDark: "#a02860", selected: "#ffaacc" },
-    brass: { light: "#fff0c7", dark: "#c9a84c", lastMoveLight: "#f5cc50", lastMoveDark: "#a17400", selected: "#f0c830" },
-    crimson: { light: "#ffd8d8", dark: "#b23a48", lastMoveLight: "#ff9a9a", lastMoveDark: "#7a1020", selected: "#ffaaaa" },
-    nebula: { light: "#e6e0ff", dark: "#5b5bd6", lastMoveLight: "#b0a0ff", lastMoveDark: "#3333ad", selected: "#a898ff" },
-    mint: { light: "#e4fff1", dark: "#4fa87d", lastMoveLight: "#90ecc0", lastMoveDark: "#1f6845", selected: "#88e8b8" },
-    plum: { light: "#f3ddf2", dark: "#944e9a", lastMoveLight: "#d898d8", lastMoveDark: "#5a1a62", selected: "#d090d0" },
-    obsidian: { light: "#9ea7b3", dark: "#1f2937", lastMoveLight: "#6a8090", lastMoveDark: "#2e4a60", selected: "#708898" },
-    retro: { light: "#f7e7b7", dark: "#6f8f5f", lastMoveLight: "#d4c060", lastMoveDark: "#3e6030", selected: "#ccc050" },
+    "chess.com": { light: "#ebecd0", dark: "#739552", lastMoveLight: "#f6f682", lastMoveDark: "#bacb43", selected: "#b8c740" },
+    lichess: { light: "#f0d9b5", dark: "#b58863", lastMoveLight: "#cdd26a", lastMoveDark: "#aaa23a", selected: "#d4a830" },
+    arctic: { light: "#eef9ff", dark: "#4d9fd1", lastMoveLight: "#aadff5", lastMoveDark: "#3a8ab8", selected: "#7acde8" },
+    ember: { light: "#ffe1cc", dark: "#d65a31", lastMoveLight: "#ffb88a", lastMoveDark: "#b04020", selected: "#ffaa66" },
+    amethyst: { light: "#f1e4ff", dark: "#7b4bc4", lastMoveLight: "#d4aaf7", lastMoveDark: "#5a2fa0", selected: "#c090f0" },
+    lagoon: { light: "#dffbf7", dark: "#1f9e89", lastMoveLight: "#88e8d8", lastMoveDark: "#0e7060", selected: "#6de0cc" },
+    rose: { light: "#ffd9e8", dark: "#d65f93", lastMoveLight: "#ffaacc", lastMoveDark: "#aa2868", selected: "#ffaacc" },
+    brass: { light: "#fff0c7", dark: "#c9a84c", lastMoveLight: "#f5d97a", lastMoveDark: "#a07820", selected: "#f0c830" },
+    crimson: { light: "#ffd8d8", dark: "#b23a48", lastMoveLight: "#ffaaaa", lastMoveDark: "#882030", selected: "#ffaaaa" },
+    nebula: { light: "#e6e0ff", dark: "#5b5bd6", lastMoveLight: "#bab0ff", lastMoveDark: "#3838b0", selected: "#a898ff" },
+    mint: { light: "#e4fff1", dark: "#4fa87d", lastMoveLight: "#96ecc0", lastMoveDark: "#2a7850", selected: "#88e8b8" },
+    plum: { light: "#f3ddf2", dark: "#944e9a", lastMoveLight: "#dda0da", lastMoveDark: "#6a2870", selected: "#d090d0" },
+    obsidian: { light: "#9ea7b3", dark: "#1f2937", lastMoveLight: "#6e8898", lastMoveDark: "#304858", selected: "#708898" },
+    retro: { light: "#f7e7b7", dark: "#6f8f5f", lastMoveLight: "#ddd070", lastMoveDark: "#4a6830", selected: "#ccc050" },
 };
 
 const pieceExt = { standard: "png", lolz: "png", neo: "png", monarchy: "webp" };
@@ -178,10 +178,14 @@ function applyClockState(msg) {
     if (msg.clocks) {
         if (msg.clocks.w > 15_000) clockLowPlayed.w = false;
         if (msg.clocks.b > 15_000) clockLowPlayed.b = false;
-        clocks = msg.clocks;
+        clocks = { ...msg.clocks };
+
+        if (msg.clockActive && msg.clockAt) {
+            const elapsed = Date.now() - msg.clockAt;
+            clocks[msg.clockActive] = Math.max(0, clocks[msg.clockActive] - elapsed);
+        }
     }
 
-    if (msg.clocks) clocks = msg.clocks;
     if (msg.clockActive !== undefined) clockActive = msg.clockActive;
     if (msg.clockAt !== undefined) clockAt = Date.now();
     if (clockActive !== null) startClockTick();
@@ -714,7 +718,7 @@ function checkGameOver(result) {
     panel.innerHTML = `
         <button class="gameover-close" id="gameover-close">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                width="14" height="14" fill="none" stroke="#c8b89a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
