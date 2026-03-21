@@ -452,8 +452,11 @@ let bgToPalette = null;
 let bgMorphProgress = 1;
 const BG_MORPH_DURATION = 600;
 let bgMorphStart = null;
-let bgCurrentLight = previewThemes.classic.light;
-let bgCurrentDark = previewThemes.classic.dark;
+
+const saved = JSON.parse(localStorage.getItem("settings") ?? "{}");
+const initTheme = previewThemes[saved.theme] ?? previewThemes.classic;
+let bgCurrentLight = initTheme.light;
+let bgCurrentDark = initTheme.dark;
 
 function bgResize() {
     bgW = window.innerWidth;

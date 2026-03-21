@@ -3,6 +3,41 @@ import init, { ChessEngine } from "../wasm/wasm.js";
 await init();
 let engine = new ChessEngine();
 
+const themes = {
+    classic: { light: "#d9e4e8", dark: "#7b9eb2", lastMoveLight: "#5ab5d0", lastMoveDark: "#4a9ab8", selected: "#6cbad2" },
+    "chess.com": { light: "#EBECD0", dark: "#739552", lastMoveLight: "#c9ca7e", lastMoveDark: "#a0b832", selected: "#b8c740" },
+    lichess: { light: "#f0d9b5", dark: "#b58863", lastMoveLight: "#d4a843", lastMoveDark: "#b06828", selected: "#d4a830" },
+    arctic: { light: "#eef9ff", dark: "#4d9fd1", lastMoveLight: "#8dd4f5", lastMoveDark: "#2a7cb0", selected: "#7acde8" },
+    ember: { light: "#ffe1cc", dark: "#d65a31", lastMoveLight: "#ffb07a", lastMoveDark: "#a82e10", selected: "#ffaa66" },
+    amethyst: { light: "#f1e4ff", dark: "#7b4bc4", lastMoveLight: "#c99af5", lastMoveDark: "#4e2090", selected: "#c090f0" },
+    lagoon: { light: "#dffbf7", dark: "#1f9e89", lastMoveLight: "#7de8d8", lastMoveDark: "#0a6e5c", selected: "#6de0cc" },
+    rose: { light: "#ffd9e8", dark: "#d65f93", lastMoveLight: "#ff9ec4", lastMoveDark: "#a02860", selected: "#ffaacc" },
+    brass: { light: "#fff0c7", dark: "#b8891f", lastMoveLight: "#f5cc50", lastMoveDark: "#7a5808", selected: "#f0c830" },
+    crimson: { light: "#ffd8d8", dark: "#b23a48", lastMoveLight: "#ff9a9a", lastMoveDark: "#7a1020", selected: "#ffaaaa" },
+    nebula: { light: "#e6e0ff", dark: "#5b5bd6", lastMoveLight: "#b0a0ff", lastMoveDark: "#2828a8", selected: "#a898ff" },
+    mint: { light: "#e4fff1", dark: "#4fa87d", lastMoveLight: "#90ecc0", lastMoveDark: "#1f6845", selected: "#88e8b8" },
+    plum: { light: "#f3ddf2", dark: "#944e9a", lastMoveLight: "#d898d8", lastMoveDark: "#5a1a62", selected: "#d090d0" },
+    obsidian: { light: "#9ea7b3", dark: "#1f2937", lastMoveLight: "#6a8090", lastMoveDark: "#2e4a60", selected: "#708898" },
+    retro: { light: "#f7e7b7", dark: "#6f8f5f", lastMoveLight: "#d4c060", lastMoveDark: "#3e6030", selected: "#ccc050" },
+};
+
+const pieceExt = { standard: "png", lolz: "png", neo: "png", monarchy: "webp" };
+
+const savedSettings = JSON.parse(localStorage.getItem("settings") ?? "{}");
+const pieceSet = savedSettings.pieceSet ?? "standard";
+const savedTheme = themes[savedSettings.theme] ?? themes.classic;
+
+const root = document.documentElement.style;
+root.setProperty("--sq-light", savedTheme.light);
+root.setProperty("--sq-dark", savedTheme.dark);
+root.setProperty("--sq-last-move-light", savedTheme.lastMoveLight);
+root.setProperty("--sq-last-move-dark", savedTheme.lastMoveDark);
+root.setProperty("--sq-selected", savedTheme.selected);
+
+function pieceImg(pieceCode) {
+    return `assets/images/${pieceSet}/${pieceCode}.${pieceExt[pieceSet] ?? "svg"}`;
+}
+
 let selectedSq = null;
 let legalTargets = [];
 let dragState = null;
@@ -333,7 +368,7 @@ function sendMove(uci, opts = {}) {
     renderBoard(color === "b");
 
     const size = fromRect.width * 0.85;
-    const anim = Object.assign(document.createElement("img"), { src: `assets/images/standard/${pieceCode}.png`, className: "piece-anim" });
+    const anim = Object.assign(document.createElement("img"), { src: pieceImg(pieceCode), className: "piece-anim" });
 
     Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
     document.body.appendChild(anim);
@@ -458,7 +493,7 @@ function connect() {
                 renderBoard(color === "b");
 
                 const size = fromRect.width * 0.85;
-                const anim = Object.assign(document.createElement("img"), { src: `assets/images/standard/${pieceCode}.png`, className: "piece-anim" });
+                const anim = Object.assign(document.createElement("img"), { src: pieceImg(pieceCode), className: "piece-anim" });
 
                 Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
                 document.body.appendChild(anim);
@@ -801,7 +836,7 @@ function renderBoard(invert = false) {
                         img.className = "piece";
                         div.appendChild(img);
                     }
-                    const newSrc = `assets/images/standard/${piece}.png`;
+                    const newSrc = pieceImg(piece);
                     if (img.src !== newSrc) img.src = newSrc;
                     img.style.opacity = (dragState?.fromSq === sqIndex || animatingToSq === sqIndex) ? "0" : "";
                 } else if (img) {
@@ -838,7 +873,7 @@ function renderBoard(invert = false) {
         ["Q", "R", "B", "N"].forEach(p => {
             const btn = document.createElement("div");
             btn.className = "promo-btn";
-            btn.appendChild(Object.assign(document.createElement("img"), { src: `assets/images/standard/${side}${p}.png`, className: "piece" }));
+            btn.appendChild(Object.assign(document.createElement("img"), { src: pieceImg(`${side}${p}`), className: "piece" }));
             btn.addEventListener("pointerdown", e => {
                 e.stopPropagation();
                 const uci = `${"abcdefgh"[fromSq % 8]}${Math.floor(fromSq / 8) + 1}${"abcdefgh"[toSq % 8]}${Math.floor(toSq / 8) + 1}${p.toLowerCase()}`;
@@ -1017,7 +1052,7 @@ document.addEventListener("pointermove", e => {
     if (pendingPointer && !dragState) {
         if (Math.hypot(e.clientX - pendingPointer.startX, e.clientY - pendingPointer.startY) < 5) return;
         const { sqIndex, piece } = pendingPointer;
-        const ghost = Object.assign(document.createElement("img"), { src: `assets/images/standard/${piece}.png`, className: "piece-ghost" });
+        const ghost = Object.assign(document.createElement("img"), { src: pieceImg(piece), className: "piece-ghost" });
 
         Object.assign(ghost.style, { left: e.clientX + "px", top: e.clientY + "px" });
         document.body.appendChild(ghost);
