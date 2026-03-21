@@ -67,6 +67,15 @@ let premoveQueue = [];
 let gameOver = false;
 let fenHistory = [];
 let viewIndex = null;
+let introPlayed = false;
+let introRunning = false;
+let introAssetsReady = false;
+let introAssetsPromise = null;
+let gameStartSoundPlayed = false;
+let opponentInfoReady = false;
+let opponentThemeKey = "classic";
+let opponentPieceSet = "standard";
+let opponentUsername = "Opponent";
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
@@ -191,6 +200,129 @@ function applyClockState(msg) {
     if (msg.clockAt !== undefined) clockAt = Date.now();
     if (clockActive !== null) startClockTick();
     else stopClockTick();
+}
+
+async function playGameIntro() {
+    if (introRunning) return;
+    introRunning = true;
+
+    document.querySelector(".game-intro")?.remove();
+
+    const myThemeKey = savedSettings.theme ?? "classic";
+    const myTheme = themes[myThemeKey] ?? themes.classic;
+    const oppTheme = themes[opponentThemeKey] ?? themes.classic;
+
+    const myColor = color;
+    const oppColor = color === "w" ? "b" : "w";
+
+    const overlay = document.createElement("div");
+    overlay.className = "game-intro";
+
+    overlay.style.setProperty("--intro-top-light", oppTheme.light);
+    overlay.style.setProperty("--intro-top-dark", oppTheme.dark);
+    overlay.style.setProperty("--intro-bottom-light", myTheme.light);
+    overlay.style.setProperty("--intro-bottom-dark", myTheme.dark);
+
+    overlay.innerHTML = `
+        <div class="intro-camera">
+            <div class="intro-half intro-half-top"></div>
+            <div class="intro-half intro-half-bottom"></div>
+
+            <div class="intro-seam"></div>
+            <div class="intro-seam-glow"></div>
+            <div class="intro-sheen"></div>
+
+            <div class="intro-vignette"></div>
+
+            <div class="intro-pieces intro-pieces-top">
+                ${[
+            { p: "Q", x: "20%", y: "12%", r: "-13deg", d: 0 },
+            { p: "K", x: "39%", y: "7%", r: "-5deg", d: 1 },
+            { p: "R", x: "61%", y: "10%", r: "6deg", d: 2 },
+            { p: "N", x: "79%", y: "14%", r: "12deg", d: 3 }
+        ].map(({ p, x, y, r, d }) => `
+                    <img
+                        class="intro-piece intro-piece-top"
+                        style="left:${x}; top:${y}; --rot:${r}; --d:${d};"
+                        src="assets/images/${opponentPieceSet}/${oppColor}${p}.${pieceExt[opponentPieceSet] ?? "svg"}"
+                        alt=""
+                    >
+                `).join("")}
+            </div>
+
+            <div class="intro-pieces intro-pieces-bottom">
+                ${[
+            { p: "N", x: "21%", y: "72%", r: "-10deg", d: 0 },
+            { p: "R", x: "40%", y: "76%", r: "-4deg", d: 1 },
+            { p: "K", x: "60%", y: "73%", r: "5deg", d: 2 },
+            { p: "Q", x: "78%", y: "69%", r: "12deg", d: 3 }
+        ].map(({ p, x, y, r, d }) => `
+                    <img
+                        class="intro-piece intro-piece-bottom"
+                        style="left:${x}; top:${y}; --rot:${r}; --d:${d};"
+                        src="assets/images/${pieceSet}/${myColor}${p}.${pieceExt[pieceSet] ?? "svg"}"
+                        alt=""
+                    >
+                `).join("")}
+            </div>
+
+            <div class="intro-label intro-label-top">
+                <span class="intro-label-name">${opponentUsername}</span>
+            </div>
+
+            <div class="intro-vs">VS</div>
+
+            <div class="intro-label intro-label-bottom">
+                <span class="intro-label-name">${username}</span>
+            </div>
+        </div>
+    `;
+
+    document.getElementById("board-wrap").appendChild(overlay);
+
+    overlay.classList.add("is-playing");
+
+    await new Promise(resolve => setTimeout(resolve, 1950));
+
+    overlay.classList.add("is-leaving");
+
+    await new Promise(resolve => {
+        overlay.addEventListener("animationend", resolve, { once: true });
+    });
+
+    overlay.remove();
+    introRunning = false;
+}
+
+function preloadIntroAssets() {
+    if (introAssetsPromise) return introAssetsPromise;
+    if (!colorKnown || !opponentInfoReady) return Promise.resolve(false);
+
+    const myColor = color;
+    const oppColor = color === "w" ? "b" : "w";
+
+    const urls = [
+        ...["N", "R", "K", "Q"].map(p => `assets/images/${pieceSet}/${myColor}${p}.${pieceExt[pieceSet] ?? "svg"}`),
+        ...["Q", "K", "R", "N"].map(p => `assets/images/${opponentPieceSet}/${oppColor}${p}.${pieceExt[opponentPieceSet] ?? "svg"}`),
+    ];
+
+    introAssetsPromise = Promise.all(
+        urls.map(src => new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
+            img.src = src;
+
+            if (img.decode) {
+                img.decode().then(() => resolve(true)).catch(() => { });
+            }
+        }))
+    ).then(() => {
+        introAssetsReady = true;
+        return true;
+    });
+
+    return introAssetsPromise;
 }
 
 function deselect() {
@@ -420,7 +552,7 @@ function connect() {
         setTimeout(() => { ws = connect(); }, 2000);
     });
 
-    socket.addEventListener("message", e => {
+    socket.addEventListener("message", async e => {
         const msg = JSON.parse(e.data);
 
         if (msg.type === "error") {
@@ -461,6 +593,8 @@ function connect() {
             color = msg.color;
             colorKnown = true;
 
+            preloadIntroAssets();
+
             const barEl = document.getElementById("bar-pieces-bottom");
             barEl.innerHTML = "";
             ["K", "Q", "R", "N"].forEach((p, i) => {
@@ -482,6 +616,13 @@ function connect() {
             const oppSet = msg.pieceSet ?? "standard";
             const oppTheme = themes[msg.theme] ?? themes.classic;
 
+            opponentThemeKey = msg.theme ?? "classic";
+            opponentPieceSet = oppSet;
+            opponentUsername = msg.username ?? "Opponent";
+            opponentInfoReady = true;
+
+            preloadIntroAssets();
+
             const barTop = document.getElementById("player-bar-top");
             barTop.style.setProperty("--sq-dark", oppTheme.dark);
             barTop.style.setProperty("--sq-light", oppTheme.light);
@@ -497,7 +638,7 @@ function connect() {
                 barEl.appendChild(img);
             });
 
-            document.getElementById("opponent-name").textContent = msg.username ?? "Opponent";
+            document.getElementById("opponent-name").textContent = opponentUsername;
             return;
         }
 
@@ -567,9 +708,40 @@ function connect() {
                 moveLog.innerHTML = "";
             }
 
-            if (!gameStarted) {
+            const newGame =
+                !stored?.moveHistory?.length &&
+                moveHistory.length === 0 &&
+                msg.fen.startsWith("rnbqkbnr/pppppppp/");
+
+            if (!gameStarted && !introPlayed && newGame && colorKnown && opponentInfoReady) {
+                await preloadIntroAssets();
+
+                if (!introAssetsReady) {
+                    renderBoard(color === "b");
+                    return;
+                }
+
+                renderBoard(color === "b");
+                await playGameIntro();
+                introPlayed = true;
                 gameStarted = true;
-                sfx("game_start").catch(() => { });
+
+                if (!gameStartSoundPlayed) {
+                    gameStartSoundPlayed = true;
+                    sfx("game_start").catch(() => { });
+                }
+
+                renderBoard(color === "b");
+                return;
+            }
+
+            if (!gameStarted && (!newGame || introPlayed || (colorKnown && opponentInfoReady && introAssetsReady))) {
+                gameStarted = true;
+
+                if (!gameStartSoundPlayed) {
+                    gameStartSoundPlayed = true;
+                    sfx("game_start").catch(() => { });
+                }
             }
 
             renderBoard(color === "b");
