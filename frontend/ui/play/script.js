@@ -12,9 +12,9 @@ const themes = {
     amethyst: { light: "#f1e4ff", dark: "#7b4bc4", lastMoveLight: "#c99af5", lastMoveDark: "#4e2090", selected: "#c090f0" },
     lagoon: { light: "#dffbf7", dark: "#1f9e89", lastMoveLight: "#7de8d8", lastMoveDark: "#0a6e5c", selected: "#6de0cc" },
     rose: { light: "#ffd9e8", dark: "#d65f93", lastMoveLight: "#ff9ec4", lastMoveDark: "#a02860", selected: "#ffaacc" },
-    brass: { light: "#fff0c7", dark: "#b8891f", lastMoveLight: "#f5cc50", lastMoveDark: "#7a5808", selected: "#f0c830" },
+    brass: { light: "#fff0c7", dark: "#c9a84c", lastMoveLight: "#f5cc50", lastMoveDark: "#a17400", selected: "#f0c830" },
     crimson: { light: "#ffd8d8", dark: "#b23a48", lastMoveLight: "#ff9a9a", lastMoveDark: "#7a1020", selected: "#ffaaaa" },
-    nebula: { light: "#e6e0ff", dark: "#5b5bd6", lastMoveLight: "#b0a0ff", lastMoveDark: "#2828a8", selected: "#a898ff" },
+    nebula: { light: "#e6e0ff", dark: "#5b5bd6", lastMoveLight: "#b0a0ff", lastMoveDark: "#3333ad", selected: "#a898ff" },
     mint: { light: "#e4fff1", dark: "#4fa87d", lastMoveLight: "#90ecc0", lastMoveDark: "#1f6845", selected: "#88e8b8" },
     plum: { light: "#f3ddf2", dark: "#944e9a", lastMoveLight: "#d898d8", lastMoveDark: "#5a1a62", selected: "#d090d0" },
     obsidian: { light: "#9ea7b3", dark: "#1f2937", lastMoveLight: "#6a8090", lastMoveDark: "#2e4a60", selected: "#708898" },
@@ -63,6 +63,7 @@ let disconnectCountdownId = null;
 let clockLowPlayed = { w: false, b: false };
 let selectedIsPremove = false;
 let premoveQueue = [];
+let gameOver = false;
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
@@ -627,7 +628,8 @@ function uciToSq(coord) {
 }
 
 function checkGameOver(result) {
-    if (result === "ongoing") return;
+    if (result === "ongoing" || gameOver) return;
+    gameOver = true;
     stopClockTick();
 
     const msgs = {
@@ -647,10 +649,30 @@ function checkGameOver(result) {
     };
 
     const { top, bottom } = msgs[result] ?? { top: "Game Over", bottom: "" };
-    const panel = document.createElement("div");
 
+    localStorage.removeItem("gameId");
+    drawBtn.disabled = true;
+    resignBtn.disabled = true;
+    resignConfirm.classList.add("hidden");
+
+    if (disconnectCountdownId) { clearTimeout(disconnectCountdownId); disconnectCountdownId = null; }
+    disconnectBanner?.remove();
+    disconnectBanner = null;
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "gameover-backdrop";
+    document.body.appendChild(backdrop);
+
+    const panel = document.createElement("div");
     panel.className = "gameover-panel";
     panel.innerHTML = `
+        <button class="gameover-close" id="gameover-close">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
         <div class="gameover-text">
             <span class="gameover-top">${top}</span>
             <span class="gameover-bottom">${bottom}</span>
@@ -660,17 +682,7 @@ function checkGameOver(result) {
             <button class="gameover-btn" id="home-btn">Home</button>
         </div>
     `;
-
-    localStorage.removeItem("gameId");
-
-    drawBtn.disabled = true;
-    resignBtn.disabled = true;
-
-    if (disconnectCountdownId) { clearTimeout(disconnectCountdownId); disconnectCountdownId = null; }
-    disconnectBanner?.remove();
-    disconnectBanner = null;
-
-    board.appendChild(panel);
+    document.body.appendChild(panel);
 
     document.getElementById("new-game-btn").addEventListener("pointerdown", e => {
         e.stopPropagation();
@@ -681,6 +693,37 @@ function checkGameOver(result) {
     document.getElementById("home-btn").addEventListener("pointerdown", e => {
         e.stopPropagation();
         window.location.href = "/";
+    });
+
+    document.getElementById("gameover-close").addEventListener("pointerdown", e => {
+        e.stopPropagation();
+
+        panel.classList.add("closing");
+        panel.addEventListener("animationend", () => {
+            backdrop.remove();
+            panel.remove();
+
+            drawBtn.classList.add("hidden");
+            resignBtn.classList.add("hidden");
+
+            const sidebarActions = document.getElementById("sidebar-actions");
+
+            const newGameBtn = document.createElement("button");
+            newGameBtn.className = "action-btn";
+            newGameBtn.textContent = "New Game";
+            newGameBtn.addEventListener("pointerdown", () => {
+                sessionStorage.setItem("autoplay", "1");
+                window.location.href = "/";
+            });
+
+            const homeBtn = document.createElement("button");
+            homeBtn.className = "action-btn";
+            homeBtn.textContent = "Home";
+            homeBtn.addEventListener("pointerdown", () => window.location.href = "/");
+
+            sidebarActions.appendChild(newGameBtn);
+            sidebarActions.appendChild(homeBtn);
+        }, { once: true });
     });
 }
 
@@ -846,7 +889,7 @@ function renderBoard(invert = false) {
         }
     }
 
-    board.querySelectorAll(".promo-backdrop, .promo-card, .gameover-panel").forEach(el => el.remove());
+    board.querySelectorAll(".promo-backdrop, .promo-card" + (gameOver ? "" : ", .gameover-panel")).forEach(el => el.remove());
 
     if (pendingPromotion) {
         const { fromSq, toSq } = pendingPromotion;

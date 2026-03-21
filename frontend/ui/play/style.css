@@ -235,20 +235,24 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 32px 40px;
+    gap: 8px;
+    padding: 32px 36px 32px;
+    min-width: 260px;
     background: var(--bg-surface);
     border: 1px solid var(--border-strong);
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: var(--shadow-panel);
     animation: slideUp 0.25s cubic-bezier(0.22, 1, 0.36, 1);
     text-align: center;
 }
 
+.gameover-panel.closing {
+    animation: slideDown 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 .gameover-top {
     display: block;
-    font-size: 1.4rem;
+    font-size: 1.5rem;
     font-weight: bold;
     color: var(--text);
     letter-spacing: 0.08em;
@@ -257,12 +261,17 @@ body {
 
 .gameover-bottom {
     display: block;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
-    letter-spacing: 0.06em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    margin-top: 10px;
-    margin-bottom: 4px;
+    margin-bottom: 12px;
+}
+
+.gameover-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
 }
 
 .gameover-btn {
@@ -270,11 +279,11 @@ body {
     border: 1px solid var(--border-deeper);
     color: var(--text);
     font-family: "Inter", monospace;
-    font-size: 0.78rem;
-    padding: 7px 20px;
+    font-size: 0.72rem;
+    padding: 8px 20px;
     border-radius: 3px;
     cursor: pointer;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     transition: border-color var(--transition-fast), color var(--transition-fast);
 }
@@ -282,6 +291,29 @@ body {
 .gameover-btn:hover {
     border-color: var(--accent);
     color: var(--accent);
+}
+
+.gameover-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    color: var(--text-dim);
+    font-size: 0.65rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.gameover-close:hover {
+    border-color: var(--text-muted);
+    color: var(--text-muted);
 }
 
 .gameover-actions {
@@ -444,6 +476,18 @@ body {
     to {
         opacity: 1;
         transform: translate(-50%, -50%);
+    }
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+    }
+
+    to {
+        opacity: 0;
+        transform: translate(-50%, calc(-50% + 20px));
     }
 }
 
