@@ -64,6 +64,8 @@ let clockLowPlayed = { w: false, b: false };
 let selectedIsPremove = false;
 let premoveQueue = [];
 let gameOver = false;
+let fenHistory = [];
+let viewIndex = null;
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
@@ -246,8 +248,10 @@ function selectSquare(sq, premove = false) {
     }
 }
 
-function pushMove(uci) {
-    moveHistory.push(uci);
+function pushMove(san) {
+    moveHistory.push(san);
+    fenHistory.push({ fen: engine.get_fen(), from: lastMove?.from ?? null, to: lastMove?.to ?? null });
+    sessionStorage.setItem(`history_${gameId}`, JSON.stringify({ moveHistory, fenHistory, lastMove }));
     const i = moveHistory.length - 1;
     if (i % 2 === 0) {
         const pair = document.createElement("div");
@@ -255,7 +259,7 @@ function pushMove(uci) {
         pair.dataset.pair = Math.floor(i / 2);
         pair.innerHTML = `
             <span class="move-num">${Math.floor(i / 2) + 1}.</span>
-            <span class="move-entry" data-idx="${i}">${uci}</span>
+            <span class="move-entry" data-idx="${i}">${san}</span>
             <span class="move-entry" data-idx=""></span>
         `;
         moveLog.appendChild(pair);
@@ -263,7 +267,7 @@ function pushMove(uci) {
         const pair = moveLog.querySelector(`[data-pair="${Math.floor(i / 2)}"]`);
         if (pair) {
             const blank = pair.querySelector("[data-idx='']");
-            if (blank) { blank.textContent = uci; blank.dataset.idx = i; }
+            if (blank) { blank.textContent = san; blank.dataset.idx = i; }
         }
     }
     moveLog.scrollTop = moveLog.scrollHeight;
@@ -345,6 +349,7 @@ function sendMove(uci, opts = {}) {
         fen: engine.get_fen(),
         lastMove,
         moveHistory: [...moveHistory],
+        fenHistory: [...fenHistory],
         premoveQueue: [...premoveQueue],
     };
 
@@ -409,6 +414,7 @@ function connect() {
                 engine = ChessEngine.from_fen(rollbackSnapshot.fen);
                 lastMove = rollbackSnapshot.lastMove;
                 moveHistory = rollbackSnapshot.moveHistory;
+                fenHistory = rollbackSnapshot.fenHistory;
                 premoveQueue = rollbackSnapshot.premoveQueue ?? [];
 
                 const lastPair = moveLog.lastElementChild;
@@ -444,9 +450,43 @@ function connect() {
 
         if (msg.type === "sync") {
             engine = ChessEngine.from_fen(msg.fen);
+            viewIndex = null;
             clearPremoves(false);
             applyClockState(msg);
             deselect();
+
+            const stored = JSON.parse(sessionStorage.getItem(`history_${gameId}`) ?? "null");
+            if (stored?.fenHistory?.length && stored.fenHistory[stored.fenHistory.length - 1]?.fen === msg.fen) {
+                moveHistory = stored.moveHistory;
+                fenHistory = stored.fenHistory;
+                lastMove = stored.lastMove ?? null;
+                moveLog.innerHTML = "";
+                moveHistory.forEach((san, i) => {
+                    if (i % 2 === 0) {
+                        const pair = document.createElement("div");
+                        pair.className = "move-pair";
+                        pair.dataset.pair = Math.floor(i / 2);
+                        pair.innerHTML = `
+                    <span class="move-num">${Math.floor(i / 2) + 1}.</span>
+                    <span class="move-entry" data-idx="${i}">${san}</span>
+                    <span class="move-entry" data-idx=""></span>
+                `;
+                        moveLog.appendChild(pair);
+                    } else {
+                        const pair = moveLog.querySelector(`[data-pair="${Math.floor(i / 2)}"]`);
+                        if (pair) {
+                            const blank = pair.querySelector("[data-idx='']");
+                            if (blank) { blank.textContent = san; blank.dataset.idx = i; }
+                        }
+                    }
+                });
+                moveLog.scrollTop = moveLog.scrollHeight;
+            } else {
+                moveHistory = [];
+                fenHistory = [{ fen: msg.fen, from: null, to: null }];
+                lastMove = null;
+                moveLog.innerHTML = "";
+            }
 
             if (!gameStarted) {
                 gameStarted = true;
@@ -471,8 +511,8 @@ function connect() {
                 if (msg.result === "checkmate_white" || msg.result === "checkmate_black") san += "#";
                 else if (msg.isCheck) san += "+";
 
-                pushMove(san);
                 lastMove = { from: uciToSq(msg.uci.slice(0, 2)), to: uciToSq(msg.uci.slice(2, 4)) };
+                pushMove(san);
 
                 if (msg.result !== "ongoing") sfx("game_end");
                 else if (msg.isCheck) sfx("check");
@@ -485,43 +525,51 @@ function connect() {
 
                 const fromSq = uciToSq(msg.uci.slice(0, 2));
                 const toSq = uciToSq(msg.uci.slice(2, 4));
-                const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
-                const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
-                const pieceCode = engine.piece_on(toSq);
 
-                animatingToSq = toSq;
-                animating = true;
-                renderBoard(color === "b");
-
-                const size = fromRect.width * 0.85;
-                const anim = Object.assign(document.createElement("img"), { src: pieceImg(pieceCode), className: "piece-anim" });
-
-                Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
-                document.body.appendChild(anim);
-
-                anim.getBoundingClientRect();
-
-                Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
-                anim.addEventListener("transitionend", () => {
-                    anim.remove();
-                    animating = false;
-                    animatingToSq = null;
+                if (viewIndex !== null) {
                     renderBoard(color === "b");
 
                     if (msg.result === "ongoing" && premoveQueue.length > 0 && engine.side_to_move() === color && !pendingPromotion) {
                         const nextUci = premoveQueue[0];
                         const legal = engine.legal_moves().some(m => m.to_uci() === nextUci);
-
-                        if (!legal) {
-                            clearPremoves();
-                        } else {
-                            premoveQueue.shift();
-                            sendMove(nextUci, { preservePremoves: true });
-                        }
+                        if (!legal) clearPremoves();
+                        else { premoveQueue.shift(); sendMove(nextUci, { preservePremoves: true }); }
                     }
 
                     checkGameOver(msg.result);
-                }, { once: true });
+                } else {
+                    const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
+                    const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
+                    const pieceCode = engine.piece_on(toSq);
+
+                    animatingToSq = toSq;
+                    animating = true;
+                    renderBoard(color === "b");
+
+                    const size = fromRect.width * 0.85;
+                    const anim = Object.assign(document.createElement("img"), { src: pieceImg(pieceCode), className: "piece-anim" });
+
+                    Object.assign(anim.style, { width: size + "px", height: size + "px", left: (fromRect.left + (fromRect.width - size) / 2) + "px", top: (fromRect.top + (fromRect.height - size) / 2) + "px" });
+                    document.body.appendChild(anim);
+                    anim.getBoundingClientRect();
+                    Object.assign(anim.style, { left: (toRect.left + (toRect.width - size) / 2) + "px", top: (toRect.top + (toRect.height - size) / 2) + "px" });
+
+                    anim.addEventListener("transitionend", () => {
+                        anim.remove();
+                        animating = false;
+                        animatingToSq = null;
+                        renderBoard(color === "b");
+
+                        if (msg.result === "ongoing" && premoveQueue.length > 0 && engine.side_to_move() === color && !pendingPromotion) {
+                            const nextUci = premoveQueue[0];
+                            const legal = engine.legal_moves().some(m => m.to_uci() === nextUci);
+                            if (!legal) clearPremoves();
+                            else { premoveQueue.shift(); sendMove(nextUci, { preservePremoves: true }); }
+                        }
+
+                        checkGameOver(msg.result);
+                    }, { once: true });
+                }
             } else {
                 if (moveHistory.length > 0) {
                     const lastIdx = moveHistory.length - 1;
@@ -630,6 +678,8 @@ function uciToSq(coord) {
 function checkGameOver(result) {
     if (result === "ongoing" || gameOver) return;
     gameOver = true;
+    sessionStorage.removeItem(`history_${gameId}`);
+
     stopClockTick();
 
     const msgs = {
@@ -658,10 +708,6 @@ function checkGameOver(result) {
     if (disconnectCountdownId) { clearTimeout(disconnectCountdownId); disconnectCountdownId = null; }
     disconnectBanner?.remove();
     disconnectBanner = null;
-
-    const backdrop = document.createElement("div");
-    backdrop.className = "gameover-backdrop";
-    document.body.appendChild(backdrop);
 
     const panel = document.createElement("div");
     panel.className = "gameover-panel";
@@ -697,10 +743,8 @@ function checkGameOver(result) {
 
     document.getElementById("gameover-close").addEventListener("pointerdown", e => {
         e.stopPropagation();
-
         panel.classList.add("closing");
         panel.addEventListener("animationend", () => {
-            backdrop.remove();
             panel.remove();
 
             drawBtn.classList.add("hidden");
@@ -811,6 +855,53 @@ function renderArrows(invert) {
     board.appendChild(svg);
 }
 
+function updateMoveLogHighlight() {
+    moveLog.querySelectorAll(".move-entry").forEach(el => el.classList.remove("active"));
+    const activeIdx = viewIndex !== null ? viewIndex - 1 : moveHistory.length - 1;
+    if (activeIdx >= 0) {
+        const entry = moveLog.querySelector(`.move-entry[data-idx="${activeIdx}"]`);
+        if (entry) {
+            entry.classList.add("active");
+            entry.scrollIntoView({ block: "nearest" });
+        }
+    }
+}
+
+function animateHistoryMove(animFromSq, animToSq, pieceCode) {
+    const fromEl = board.querySelector(`[data-sq="${animFromSq}"]`);
+    const toEl = board.querySelector(`[data-sq="${animToSq}"]`);
+    const fromRect = fromEl?.getBoundingClientRect();
+    const toRect = toEl?.getBoundingClientRect();
+    if (!fromRect || !toRect) { renderBoard(color === "b"); return; }
+
+    renderBoard(color === "b");
+
+    const toImg = board.querySelector(`[data-sq="${animToSq}"] img.piece`);
+    if (toImg) toImg.style.opacity = "0";
+
+    const size = fromRect.width * 0.85;
+    const anim = Object.assign(document.createElement("img"), { src: pieceImg(pieceCode), className: "piece-anim" });
+
+    Object.assign(anim.style, {
+        width: size + "px", height: size + "px",
+        left: (fromRect.left + (fromRect.width - size) / 2) + "px",
+        top: (fromRect.top + (fromRect.height - size) / 2) + "px",
+    });
+
+    document.body.appendChild(anim);
+    anim.getBoundingClientRect();
+    Object.assign(anim.style, {
+        left: (toRect.left + (toRect.width - size) / 2) + "px",
+        top: (toRect.top + (toRect.height - size) / 2) + "px",
+    });
+
+    anim.addEventListener("transitionend", () => {
+        anim.remove();
+        const img = board.querySelector(`[data-sq="${animToSq}"] img.piece`);
+        if (img) img.style.opacity = "";
+    }, { once: true });
+}
+
 function renderBoard(invert = false) {
     if (board.querySelectorAll(".sq").length === 0) {
         for (let i = 0; i < 64; i++) {
@@ -820,36 +911,38 @@ function renderBoard(invert = false) {
         }
     }
 
-    let displayEngine = engine;
+    const inHistory = viewIndex !== null;
+    const histEntry = inHistory ? fenHistory[viewIndex] : null;
 
-    if (premoveQueue.length > 0) {
+    let displayEngine = engine;
+    if (inHistory) {
+        displayEngine = ChessEngine.from_fen(histEntry.fen);
+    } else if (premoveQueue.length > 0) {
         displayEngine = ChessEngine.from_fen(engine.get_fen());
 
         for (const uci of premoveQueue) {
-            if (displayEngine.side_to_move() !== color) {
-                displayEngine = ChessEngine.from_fen(setFenSideToMove(displayEngine.get_fen(), color));
-            }
-
+            if (displayEngine.side_to_move() !== color) displayEngine = ChessEngine.from_fen(setFenSideToMove(displayEngine.get_fen(), color));
             const mv = displayEngine.parse_uci(uci);
             if (!mv) break;
-
-            try {
-                displayEngine.make_move(mv);
-            } catch {
-                break;
-            }
+            try { displayEngine.make_move(mv); } catch { break; }
         }
     }
 
+    const effectiveLastMove = inHistory
+        ? (histEntry.from != null ? { from: histEntry.from, to: histEntry.to } : null)
+        : lastMove;
+
     const premoveFrom = new Set();
     const premoveTo = new Set();
-    for (const uci of premoveQueue) {
-        premoveFrom.add(uciToSq(uci.slice(0, 2)));
-        premoveTo.add(uciToSq(uci.slice(2, 4)));
+    if (!inHistory) {
+        for (const uci of premoveQueue) {
+            premoveFrom.add(uciToSq(uci.slice(0, 2)));
+            premoveTo.add(uciToSq(uci.slice(2, 4)));
+        }
     }
 
-    const inCheck = engine.is_in_check();
-    const kingSq = inCheck ? engine.king_square(engine.side_to_move()) : null;
+    const inCheck = displayEngine.is_in_check();
+    const kingSq = inCheck ? displayEngine.king_square(displayEngine.side_to_move()) : null;
     const sqs = board.querySelectorAll(".sq");
 
     for (let row = 0; row < 8; row++) {
@@ -863,13 +956,13 @@ function renderBoard(invert = false) {
             div.className = "sq " + ((rank + file) % 2 === 0 ? "dark" : "light");
             div.dataset.sq = sqIndex;
 
-            if (sqIndex === selectedSq) div.classList.add("selected");
-            if (legalTargets.includes(sqIndex)) div.classList.add(piece ? "legal-capture" : "legal");
+            if (!inHistory && sqIndex === selectedSq) div.classList.add("selected");
+            if (!inHistory && legalTargets.includes(sqIndex)) div.classList.add(piece ? "legal-capture" : "legal");
             if (sqIndex === kingSq) div.classList.add("in-check");
-            if (lastMove && (sqIndex === lastMove.from || sqIndex === lastMove.to)) div.classList.add("last-move");
-            if (arrowHighlights.has(sqIndex)) div.classList.add("arrow-highlight");
-            if (premoveFrom.has(sqIndex)) div.classList.add("premove-from");
-            if (premoveTo.has(sqIndex)) div.classList.add("premove-to");
+            if (effectiveLastMove && (sqIndex === effectiveLastMove.from || sqIndex === effectiveLastMove.to)) div.classList.add("last-move");
+            if (!inHistory && arrowHighlights.has(sqIndex)) div.classList.add("arrow-highlight");
+            if (!inHistory && premoveFrom.has(sqIndex)) div.classList.add("premove-from");
+            if (!inHistory && premoveTo.has(sqIndex)) div.classList.add("premove-to");
 
             let img = div.querySelector("img.piece");
             if (colorKnown) {
@@ -881,7 +974,7 @@ function renderBoard(invert = false) {
                     }
                     const newSrc = pieceImg(piece);
                     if (img.src !== newSrc) img.src = newSrc;
-                    img.style.opacity = (dragState?.fromSq === sqIndex || animatingToSq === sqIndex) ? "0" : "";
+                    img.style.opacity = (!inHistory && (dragState?.fromSq === sqIndex || animatingToSq === sqIndex)) ? "0" : "";
                 } else if (img) {
                     img.remove();
                 }
@@ -941,17 +1034,15 @@ function renderBoard(invert = false) {
     }
 
     renderArrows(invert);
+    updateMoveLogHighlight();
 }
 
 board.addEventListener("contextmenu", e => e.preventDefault());
 
-document.addEventListener("pointerdown", e => {
-    if (e.button === 2 && premoveQueue.length > 0) {
-        clearPremoves();
-    }
-}, true);
-
 board.addEventListener("pointerdown", e => {
+    if (viewIndex !== null) return;
+    if (gameOver) return;
+
     if (e.button === 2) {
         clearPremoves(false);
         const div = e.target.closest(".sq");
@@ -1091,6 +1182,12 @@ board.addEventListener("pointerup", e => {
     }
 });
 
+document.addEventListener("pointerdown", e => {
+    if (e.button === 2 && premoveQueue.length > 0) {
+        clearPremoves();
+    }
+}, true);
+
 document.addEventListener("pointermove", e => {
     if (pendingPointer && !dragState) {
         if (Math.hypot(e.clientX - pendingPointer.startX, e.clientY - pendingPointer.startY) < 5) return;
@@ -1195,6 +1292,45 @@ document.addEventListener("pointerup", e => {
         }
     } else {
         deselect();
+    }
+
+    renderBoard(color === "b");
+});
+
+document.addEventListener("keydown", e => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    if (!fenHistory.length) return;
+    e.preventDefault();
+
+    const prevViewIndex = viewIndex;
+
+    if (e.key === "ArrowLeft") {
+        const current = viewIndex ?? fenHistory.length - 1;
+        if (current <= 0) return;
+        viewIndex = current - 1;
+    } else {
+        if (viewIndex === null) return;
+        const next = viewIndex + 1;
+        viewIndex = next >= fenHistory.length - 1 ? null : next;
+    }
+
+    if (viewIndex === prevViewIndex) return;
+
+    const effectiveNewIdx = viewIndex ?? fenHistory.length - 1;
+    const effectivePrevIdx = prevViewIndex ?? fenHistory.length - 1;
+
+    if (e.key === "ArrowRight") {
+        const entry = fenHistory[effectiveNewIdx];
+        if (entry?.from !== null) {
+            const pc = ChessEngine.from_fen(entry.fen).piece_on(entry.to);
+            if (pc) { animateHistoryMove(entry.from, entry.to, pc); return; }
+        }
+    } else {
+        const entry = fenHistory[effectivePrevIdx];
+        if (entry?.from !== null) {
+            const pc = ChessEngine.from_fen(entry.fen).piece_on(entry.to);
+            if (pc) { animateHistoryMove(entry.to, entry.from, pc); return; }
+        }
     }
 
     renderBoard(color === "b");

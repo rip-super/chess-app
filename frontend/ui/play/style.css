@@ -268,12 +268,6 @@ body {
     margin-bottom: 12px;
 }
 
-.gameover-actions {
-    display: flex;
-    flex-direction: row;
-    gap: 8px;
-}
-
 .gameover-btn {
     background: transparent;
     border: 1px solid var(--border-deeper);
@@ -370,8 +364,9 @@ body {
     cursor: default;
 }
 
-.move-pair .move-entry:hover {
+.move-pair .move-entry.active {
     background: var(--border);
+    border-radius: 2px;
 }
 
 #sidebar-actions {
