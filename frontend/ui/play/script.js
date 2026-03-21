@@ -25,6 +25,7 @@ const pieceExt = { standard: "png", lolz: "png", neo: "png", monarchy: "webp" };
 
 const savedSettings = JSON.parse(localStorage.getItem("settings") ?? "{}");
 const pieceSet = savedSettings.pieceSet ?? "standard";
+const username = savedSettings.username ?? "Guest";
 const savedTheme = themes[savedSettings.theme] ?? themes.classic;
 
 const root = document.documentElement.style;
@@ -402,7 +403,16 @@ function connect() {
 
     socket.addEventListener("open", () => {
         connStatus.classList.add("hidden");
-        socket.send(JSON.stringify({ type: "auth", token }));
+
+        socket.send(JSON.stringify({
+            type: "auth",
+            token,
+            settings: {
+                username: username,
+                pieceSet: pieceSet,
+                theme: savedSettings.theme ?? "classic",
+            }
+        }));
     });
 
     socket.addEventListener("close", () => {
@@ -450,7 +460,44 @@ function connect() {
         if (msg.type === "assign") {
             color = msg.color;
             colorKnown = true;
+
+            const barEl = document.getElementById("bar-pieces-bottom");
+            barEl.innerHTML = "";
+            ["K", "Q", "R", "N"].forEach((p, i) => {
+                const img = document.createElement("img");
+                img.src = pieceImg(`${color}${p}`);
+                const rights = [96, 160, 224, 288];
+                const rots = [-7, 4, -4, 7];
+                img.style.cssText = `position:absolute;height:102%;width:auto;right:${rights[i]}px;top:50%;transform:translateY(-50%) rotate(${rots[i]}deg);opacity:1;pointer-events:none;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.4));`;
+                barEl.appendChild(img);
+            });
+
+            document.getElementById("player-name").textContent = username;
             renderBoard(color === "b");
+            return;
+        }
+
+        if (msg.type === "opponent_info") {
+            const opp = color === "w" ? "b" : "w";
+            const oppSet = msg.pieceSet ?? "standard";
+            const oppTheme = themes[msg.theme] ?? themes.classic;
+
+            const barTop = document.getElementById("player-bar-top");
+            barTop.style.setProperty("--sq-dark", oppTheme.dark);
+            barTop.style.setProperty("--sq-light", oppTheme.light);
+
+            const barEl = document.getElementById("bar-pieces-top");
+            barEl.innerHTML = "";
+            ["K", "Q", "R", "N"].forEach((p, i) => {
+                const img = document.createElement("img");
+                img.src = `assets/images/${oppSet}/${opp}${p}.${pieceExt[oppSet] ?? "svg"}`;
+                const lefts = [96, 160, 224, 288];
+                const rots = [7, -4, 4, -7];
+                img.style.cssText = `position:absolute;height:102%;width:auto;left:${lefts[i]}px;top:50%;transform:translateY(-50%) rotate(${rots[i]}deg);opacity:1;pointer-events:none;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.4));`;
+                barEl.appendChild(img);
+            });
+
+            document.getElementById("opponent-name").textContent = msg.username ?? "Opponent";
             return;
         }
 
@@ -473,10 +520,10 @@ function connect() {
                         pair.className = "move-pair";
                         pair.dataset.pair = Math.floor(i / 2);
                         pair.innerHTML = `
-                    <span class="move-num">${Math.floor(i / 2) + 1}.</span>
-                    <span class="move-entry" data-idx="${i}">${san}</span>
-                    <span class="move-entry" data-idx=""></span>
-                `;
+                            <span class="move-num">${Math.floor(i / 2) + 1}.</span>
+                            <span class="move-entry" data-idx="${i}">${san}</span>
+                            <span class="move-entry" data-idx=""></span>
+                        `;
                         moveLog.appendChild(pair);
                     } else {
                         const pair = moveLog.querySelector(`[data-pair="${Math.floor(i / 2)}"]`);

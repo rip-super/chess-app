@@ -30,7 +30,7 @@
     --accent-glow: rgba(123, 158, 178, 0.25);
     --accent-danger: #c94c4c;
 
-    --clock-h: 40px;
+    --clock-h: 60px;
 
     --transition-fast: 0.15s ease;
 
@@ -44,6 +44,8 @@ body {
     font-family: "Inter", monospace;
     min-height: 100vh;
     margin: 0;
+    padding: 32px 24px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -55,7 +57,7 @@ body {
 #board-wrap {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 #board {
@@ -68,29 +70,92 @@ body {
 }
 
 .clock {
-    height: var(--clock-h);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 0 10px;
-    font-size: 1.3rem;
-    font-weight: 600;
+    position: relative;
+    z-index: 1;
+    font-size: 1.1rem;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
-    color: var(--text-muted);
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
+    color: rgba(255, 255, 255, 0.82);
+    background: rgba(0, 0, 0, 0.22);
+    padding: 5px 12px;
+    border-radius: 4px;
+    flex-shrink: 0;
     transition: color var(--transition-fast), background var(--transition-fast);
-}
-
-.clock.active {
-    color: var(--text);
-    background: var(--bg-sidebar);
-    border-color: var(--border-strong);
 }
 
 .clock.low {
     color: var(--accent-danger);
+}
+
+.player-bar {
+    height: var(--clock-h);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    border-radius: 5px;
+    position: relative;
+    overflow: hidden;
+    transition: filter var(--transition-fast);
+}
+
+#player-bar-top {
+    background:
+        linear-gradient(120deg, rgba(255, 255, 255, 0.10), rgba(0, 0, 0, 0.06)),
+        var(--sq-dark);
+}
+
+#player-bar-bottom {
+    background:
+        linear-gradient(120deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.05)),
+        var(--sq-dark);
+}
+
+.player-bar:has(.clock.active) {
+    filter: brightness(1.12);
+}
+
+.bar-pieces {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 0;
+}
+
+.player-name {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    min-width: 0;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.88);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.03em;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+#player-bar-top .player-name {
+    order: 3;
+    text-align: right;
+    margin-left: auto;
+}
+
+#player-bar-top .clock {
+    order: 1;
+}
+
+#player-bar-bottom .player-name {
+    order: 1;
+}
+
+#player-bar-bottom .clock {
+    order: 3;
+    margin-left: auto;
 }
 
 .sq {
@@ -324,7 +389,7 @@ body {
 
 #sidebar {
     width: 200px;
-    height: calc(var(--sq) * 8 + var(--clock-h) * 2 + 24px);
+    height: calc(var(--sq) * 8 + var(--clock-h) * 2 + 16px);
     background: var(--bg-sidebar);
     border: 1px solid var(--border);
     border-radius: 4px;

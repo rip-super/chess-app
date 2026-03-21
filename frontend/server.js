@@ -40,6 +40,8 @@ function createNewGame(tcId = DEFAULT_TIME_CONTROL) {
         timeControl: tc,
         tcId,
         clocks: { w: tc.initial, b: tc.initial },
+        whiteSettings: null,
+        blackSettings: null,
         clockActive: null,
         lastTickAt: null,
         flagTimer: null,
@@ -131,7 +133,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
         },
 
         onMessage(evt, ws) {
-            const { type, uci, token } = JSON.parse(evt.data);
+            const { type, uci, token, settings } = JSON.parse(evt.data);
 
             if (type === "auth" && !games.has(gameId)) {
                 ws.send(JSON.stringify({ type: "not_found" }));
@@ -161,14 +163,26 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                         opponent?.send(JSON.stringify({ type: "opponent_reconnected" }));
                     }
 
+                    if (settings) {
+                        if (restoredColor === "w") game.whiteSettings = settings;
+                        else game.blackSettings = settings;
+                    }
+
                     ws.send(JSON.stringify({ type: "assign", color: restoredColor }));
                     ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen(), ...clockState(game) }));
+
+                    const oppSettings = restoredColor === "w" ? game.blackSettings : game.whiteSettings;
+                    if (oppSettings) ws.send(JSON.stringify({ type: "opponent_info", ...oppSettings }));
+
                     if (game.result) ws.send(JSON.stringify({ type: "game_over", result: game.result }));
                     return;
                 }
 
                 if (!game.white) {
-                    game.white = ws; game.tokens[token] = "w";
+                    game.white = ws;
+                    game.tokens[token] = "w";
+                    game.whiteSettings = settings ?? {};
+
                     console.log(`[${gameId}] player joined as white`);
                     ws.send(JSON.stringify({ type: "assign", color: "w" }));
                 } else if (!game.black) {
@@ -178,14 +192,21 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                         if (oldToken) game.tokens[oldToken] = "b";
                         game.black = game.white;
                         game.white = ws;
+                        game.blackSettings = game.whiteSettings;
+                        game.whiteSettings = settings ?? {};
                         console.log(`[${gameId}] player joined as white (colors swapped)`);
                         game.black.send(JSON.stringify({ type: "assign", color: "b" }));
                         ws.send(JSON.stringify({ type: "assign", color: "w" }));
                     } else {
-                        game.black = ws; game.tokens[token] = "b";
+                        game.black = ws;
+                        game.tokens[token] = "b";
+                        game.blackSettings = settings ?? {};
                         console.log(`[${gameId}] player joined as black`);
                         ws.send(JSON.stringify({ type: "assign", color: "b" }));
                     }
+
+                    game.white?.send(JSON.stringify({ type: "opponent_info", ...(game.blackSettings ?? {}) }));
+                    game.black?.send(JSON.stringify({ type: "opponent_info", ...(game.whiteSettings ?? {}) }));
 
                     startClocks(gameId, game);
                 } else {
