@@ -13,9 +13,9 @@ Currently live [here!](https://chess.sahildash.dev) (if the dev server is runnin
 - cooking home page (if i do say so myself)
 - Time keeping (9 different time controls!!!)
 - Settings page (change sounds, board, pieces)
+- Username system (with username banners while playing!!)
 
 # TODO
-- Username system
 - chat(?)
 - like that chess.com animation where it shows you what your opponent's board looks like before the match starts
 
