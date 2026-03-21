@@ -323,19 +323,12 @@ async function startMatchmaking(tc) {
                         window.location.href = `/play/${d.gameId}`;
                     } else if (d.error) {
                         cancelMatchmaking();
-                        statusText.textContent = "Timed out - try again.";
+                        statusText.textContent = "Something went wrong - try again.";
                     }
                 } catch {
                     cancelMatchmaking();
                 }
             }, 500);
-
-            setTimeout(() => {
-                if (activeInterval && isMatchmaking) {
-                    cancelMatchmaking();
-                    statusText.textContent = "Timed out - try again.";
-                }
-            }, 30000);
         }
     } catch {
         cancelMatchmaking();
