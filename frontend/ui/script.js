@@ -26,21 +26,21 @@ let previewRenderToken = 0;
 let lastRenderedPieceSet = null;
 
 const previewThemes = {
-    classic: { light: "#d9e4e8", dark: "#7b9eb2", panel: "#182229" },
-    "chess.com": { light: "#EBECD0", dark: "#739552", panel: "#1f2a1a" },
-    lichess: { light: "#f0d9b5", dark: "#b58863", panel: "#201a17" },
-    arctic: { light: "#eef9ff", dark: "#4d9fd1", panel: "#0d1e28" },
-    ember: { light: "#ffe1cc", dark: "#d65a31", panel: "#2b120c" },
-    amethyst: { light: "#f1e4ff", dark: "#7b4bc4", panel: "#1d1430" },
-    lagoon: { light: "#dffbf7", dark: "#1f9e89", panel: "#0d201d" },
-    rose: { light: "#ffd9e8", dark: "#d65f93", panel: "#2a1520" },
-    brass: { light: "#fff0c7", dark: "#b8891f", panel: "#241a0c" },
-    crimson: { light: "#ffd8d8", dark: "#b23a48", panel: "#2a1014" },
-    nebula: { light: "#e6e0ff", dark: "#5b5bd6", panel: "#151533" },
-    mint: { light: "#e4fff1", dark: "#4fa87d", panel: "#102019" },
-    plum: { light: "#f3ddf2", dark: "#944e9a", panel: "#231226" },
-    obsidian: { light: "#9ea7b3", dark: "#1f2937", panel: "#0a0f18" },
-    retro: { light: "#f7e7b7", dark: "#6f8f5f", panel: "#1b2116" },
+    classic: { light: "#d9e4e8", dark: "#7b9eb2", lastMoveLight: "#5ab5d0", lastMoveDark: "#4a9ab8", selected: "#6cbad2", panel: "#182229" },
+    "chess.com": { light: "#ebecd0", dark: "#739552", lastMoveLight: "#f6f682", lastMoveDark: "#bacb43", selected: "#b8c740", panel: "#1f2a1a" },
+    lichess: { light: "#f0d9b5", dark: "#b58863", lastMoveLight: "#cdd26a", lastMoveDark: "#aaa23a", selected: "#d4a830", panel: "#201a17" },
+    arctic: { light: "#eef9ff", dark: "#4d9fd1", lastMoveLight: "#90a3f7", lastMoveDark: "#2a48cc", selected: "#a0b8ff", panel: "#0d1e28" },
+    ember: { light: "#ffe1cc", dark: "#d65a31", lastMoveLight: "#f5e26b", lastMoveDark: "#c09214", selected: "#ffec80", panel: "#2b120c" },
+    amethyst: { light: "#f1e4ff", dark: "#7b4bc4", lastMoveLight: "#ee82f6", lastMoveDark: "#a028b4", selected: "#f698ff", panel: "#1d1430" },
+    lagoon: { light: "#dffbf7", dark: "#1f9e89", lastMoveLight: "#8ac8e5", lastMoveDark: "#1a6888", selected: "#99daf5", panel: "#0d201d" },
+    rose: { light: "#ffd9e8", dark: "#d65f93", lastMoveLight: "#f5e070", lastMoveDark: "#c8b020", selected: "#f0d840", panel: "#2a1520" },
+    brass: { light: "#fff0c7", dark: "#c9a84c", lastMoveLight: "#dbf56b", lastMoveDark: "#9cbe24", selected: "#eaff80", panel: "#241a0c" },
+    crimson: { light: "#ffd8d8", dark: "#b23a48", lastMoveLight: "#f6b27b", lastMoveDark: "#984d21", selected: "#ffbe8c", panel: "#2a1014" },
+    nebula: { light: "#e6e0ff", dark: "#5b5bd6", lastMoveLight: "#cc7ef6", lastMoveDark: "#7c28d8", selected: "#d893ff", panel: "#151533" },
+    mint: { light: "#e4fff1", dark: "#4fa87d", lastMoveLight: "#f0c060", lastMoveDark: "#c88020", selected: "#e8b040", panel: "#102019" },
+    plum: { light: "#f3ddf2", dark: "#944e9a", lastMoveLight: "#e8d860", lastMoveDark: "#b8a820", selected: "#d8c840", panel: "#231226" },
+    obsidian: { light: "#9ea7b3", dark: "#1f2937", lastMoveLight: "#90c0e8", lastMoveDark: "#4878b8", selected: "#80b0e0", panel: "#0a0f18" },
+    retro: { light: "#f7e7b7", dark: "#6f8f5f", lastMoveLight: "#d8c858", lastMoveDark: "#a09020", selected: "#d0c040", panel: "#1b2116" },
 };
 
 const pieceSets = [
@@ -81,9 +81,12 @@ const DEFAULT_SETTINGS = {
     pieceSet: "standard",
 };
 
+const PREVIEW_LAST_MOVE = new Set([8, 12]);
+
 let selectedTheme = DEFAULT_SETTINGS.theme;
 let activeTheme = DEFAULT_SETTINGS.theme;
 let selectedPieceSet = DEFAULT_SETTINGS.pieceSet;
+let previewSelectedIdx = null;
 
 function generateUsername() {
     const adjectives = [
@@ -200,6 +203,23 @@ function resetSettingsForm() {
     renderSettingsPreview();
 }
 
+function applyPreviewSquareColors() {
+    const palette = previewThemes[selectedTheme] || previewThemes.classic;
+    for (const item of previewSquares) {
+        const row = Math.floor(item.index / 4);
+        const col = item.index % 4;
+        const isLight = (row + col) % 2 === 0;
+
+        if (item.index === previewSelectedIdx) {
+            item.square.style.background = palette.selected;
+        } else if (PREVIEW_LAST_MOVE.has(item.index)) {
+            item.square.style.background = isLight ? palette.lastMoveLight : palette.lastMoveDark;
+        } else {
+            item.square.style.background = isLight ? palette.light : palette.dark;
+        }
+    }
+}
+
 function buildSettingsPreviewBoard() {
     if (previewBoardBuilt) return;
 
@@ -212,6 +232,7 @@ function buildSettingsPreviewBoard() {
 
             const square = document.createElement("div");
             square.className = "preview-square";
+            square.style.cursor = "pointer";
 
             const img = document.createElement("img");
             img.className = "preview-piece";
@@ -222,10 +243,13 @@ function buildSettingsPreviewBoard() {
             square.appendChild(img);
             previewBoard.appendChild(square);
 
-            previewSquares.push({
-                square,
-                img,
-                index: sq,
+            const item = { square, img, index: sq };
+            previewSquares.push(item);
+
+            square.addEventListener("click", () => {
+                if (!previewPosition[sq]) return;
+                previewSelectedIdx = previewSelectedIdx === sq ? null : sq;
+                applyPreviewSquareColors();
             });
         }
     }
@@ -240,14 +264,11 @@ async function renderSettingsPreview() {
 
     buildSettingsPreviewBoard();
     previewBoard.style.background = palette.panel;
+    applyPreviewSquareColors();
 
     const imageSources = [];
 
     for (const item of previewSquares) {
-        const row = Math.floor(item.index / 4);
-        const col = item.index % 4;
-        item.square.style.background = (row + col) % 2 === 0 ? palette.light : palette.dark;
-
         const pieceCode = previewPosition[item.index];
         if (pieceCode) imageSources.push(getPieceAssetPath(selectedPieceSet, pieceCode));
     }
