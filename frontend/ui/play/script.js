@@ -25,7 +25,7 @@ const pieceExt = { standard: "png", lolz: "png", neo: "png", monarchy: "webp" };
 
 const savedSettings = JSON.parse(localStorage.getItem("settings") ?? "{}");
 const pieceSet = savedSettings.pieceSet ?? "standard";
-const username = savedSettings.username ?? "Guest";
+const username = savedSettings.username?.trim() || "Guest";
 const savedTheme = themes[savedSettings.theme] ?? themes.classic;
 
 const root = document.documentElement.style;
@@ -501,6 +501,32 @@ function connect() {
             return;
         }
 
+        if (msg.type === "move_abort_warning") {
+            const banner = document.createElement("div");
+            banner.className = "draw-offer-banner";
+
+            const isUs = msg.color === color;
+            const endsAt = Date.now() + (msg.remainingMs ?? 10000);
+
+            function tick() {
+                const remaining = Math.max(0, endsAt - Date.now());
+                const secs = Math.ceil(remaining / 1000);
+
+                banner.innerHTML = `
+                    <span>${isUs ? "Make a move soon or the game will be abandoned" : "Waiting for opponent's move - game may be abandoned soon"}</span>
+                    <span style="font-size:0.65rem;color:var(--text-muted)">${secs}s remaining</span>
+                `;
+
+                if (remaining > 0) setTimeout(tick, 250);
+            }
+
+            document.querySelectorAll(".move-abort-banner").forEach(el => el.remove());
+            banner.classList.add("move-abort-banner");
+            document.getElementById("sidebar-actions").prepend(banner);
+            tick();
+            return;
+        }
+
         if (msg.type === "sync") {
             engine = ChessEngine.from_fen(msg.fen);
             viewIndex = null;
@@ -551,6 +577,8 @@ function connect() {
         }
 
         if (msg.type === "move") {
+            document.querySelectorAll(".move-abort-banner").forEach(el => el.remove());
+
             const isOwnMove = rollbackSnapshot !== null;
             rollbackSnapshot = null;
 
@@ -716,6 +744,7 @@ function connect() {
         }
 
         if (msg.type === "game_over") {
+            document.querySelectorAll(".move-abort-banner").forEach(el => el.remove());
             sfx("game_end");
             applyClockState({ ...msg, clockActive: null });
             checkGameOver(msg.result);
@@ -785,6 +814,7 @@ function checkGameOver(result) {
             <button class="gameover-btn" id="home-btn">Home</button>
         </div>
     `;
+
     document.body.appendChild(panel);
 
     document.getElementById("new-game-btn").addEventListener("pointerdown", e => {

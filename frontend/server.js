@@ -9,6 +9,8 @@ const wasm = await readFile(new URL("./ui/wasm/wasm_bg.wasm", import.meta.url));
 await init({ module_or_path: wasm });
 
 const ABANDON_TIMEOUT_MS = 60 * 1000;
+const MOVE_ABANDON_MS = 30 * 1000;
+const MOVE_ABANDON_WARNING_MS = 15 * 1000;
 
 const TIME_CONTROLS = {
     "1+0": { initial: 60_000, increment: 0 },
@@ -45,6 +47,8 @@ function createNewGame(tcId = DEFAULT_TIME_CONTROL) {
         clockActive: null,
         lastTickAt: null,
         flagTimer: null,
+        moveAbandonTimer: null,
+        moveAbandonWarnTimer: null,
         disconnectTimer: null,
     };
 }
@@ -88,6 +92,59 @@ function clockState(game) {
         clockActive: game.clockActive,
         clockAt: game.lastTickAt,
     };
+}
+
+function resetMoveAbortTimer(gameId, game) {
+    if (game.moveAbortTimer) {
+        clearTimeout(game.moveAbortTimer);
+        game.moveAbortTimer = null;
+    }
+    if (game.moveAbortWarnTimer) {
+        clearTimeout(game.moveAbortWarnTimer);
+        game.moveAbortWarnTimer = null;
+    }
+    if (game.result) return;
+
+    const waitingOn = game.engine.side_to_move();
+
+    game.moveAbortWarnTimer = setTimeout(() => {
+        const g = games.get(gameId);
+        if (!g || g.result || g.engine.side_to_move() !== waitingOn) return;
+
+        const msg = JSON.stringify({
+            type: "move_abort_warning",
+            color: waitingOn,
+            remainingMs: MOVE_ABANDON_WARNING_MS,
+        });
+
+        g.white?.send(msg);
+        g.black?.send(msg);
+    }, MOVE_ABANDON_MS - MOVE_ABANDON_WARNING_MS);
+
+    game.moveAbortTimer = setTimeout(() => {
+        const g = games.get(gameId);
+        if (!g || g.result || g.engine.side_to_move() !== waitingOn) return;
+
+        g.result = waitingOn === "w" ? "abandon_white" : "abandon_black";
+        g.clockActive = null;
+
+        clearFlagTimer(g);
+
+        if (g.moveAbortWarnTimer) {
+            clearTimeout(g.moveAbortWarnTimer);
+            g.moveAbortWarnTimer = null;
+        }
+        g.moveAbortTimer = null;
+
+        const msg = JSON.stringify({
+            type: "game_over",
+            result: g.result,
+            ...clockState(g),
+        });
+
+        g.white?.send(msg);
+        g.black?.send(msg);
+    }, MOVE_ABANDON_MS);
 }
 
 app.get("/match", (c) => {
@@ -209,6 +266,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     game.black?.send(JSON.stringify({ type: "opponent_info", ...(game.whiteSettings ?? {}) }));
 
                     startClocks(gameId, game);
+                    resetMoveAbortTimer(gameId, game);
                 } else {
                     console.warn(`[${gameId}] player tried to join full game`);
                     ws.send(JSON.stringify({ type: "error", msg: "game full" }));
@@ -226,6 +284,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                 game.engine = new ChessEngine();
                 game.clocks = { w: game.timeControl.initial, b: game.timeControl.initial };
                 startClocks(gameId, game);
+                resetMoveAbortTimer(gameId, game);
 
                 console.log(`[${gameId}] new game started`);
 
@@ -248,6 +307,15 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
 
                 game.clockActive = null;
                 game.result = result;
+
+                if (game.moveAbortTimer) {
+                    clearTimeout(game.moveAbortTimer);
+                    game.moveAbortTimer = null;
+                }
+                if (game.moveAbortWarnTimer) {
+                    clearTimeout(game.moveAbortWarnTimer);
+                    game.moveAbortWarnTimer = null;
+                }
 
                 const msg = JSON.stringify({ type: "game_over", result, ...clockState(game) });
                 game.white?.send(msg);
@@ -275,6 +343,15 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                 game.clockActive = null;
                 game.result = "draw_agreed";
 
+                if (game.moveAbortTimer) {
+                    clearTimeout(game.moveAbortTimer);
+                    game.moveAbortTimer = null;
+                }
+                if (game.moveAbortWarnTimer) {
+                    clearTimeout(game.moveAbortWarnTimer);
+                    game.moveAbortWarnTimer = null;
+                }
+
                 const msg = JSON.stringify({ type: "game_over", result: "draw_agreed", ...clockState(game) });
                 game.white?.send(msg);
                 game.black?.send(msg);
@@ -299,6 +376,15 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     game.clocks[game.clockActive] = Math.max(0, game.clocks[game.clockActive] - elapsed);
                 }
 
+                if (game.moveAbortTimer) {
+                    clearTimeout(game.moveAbortTimer);
+                    game.moveAbortTimer = null;
+                }
+                if (game.moveAbortWarnTimer) {
+                    clearTimeout(game.moveAbortWarnTimer);
+                    game.moveAbortWarnTimer = null;
+                }
+
                 game.clockActive = null;
                 game.result = result;
                 clearFlagTimer(game);
@@ -321,9 +407,27 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
             if (!mv) return ws.send(JSON.stringify({ type: "error", msg: "invalid move" }));
 
             try {
-                if (game.clockActive && game.lastTickAt) {
+                if (game.clockActive === sideToMove && game.lastTickAt) {
                     const elapsed = Date.now() - game.lastTickAt;
                     game.clocks[sideToMove] = Math.max(0, game.clocks[sideToMove] - elapsed);
+
+                    if (game.clocks[sideToMove] <= 0) {
+                        clearFlagTimer(game);
+                        game.clocks[sideToMove] = 0;
+                        game.clockActive = null;
+                        game.result = sideToMove === "w" ? "timeout_white" : "timeout_black";
+
+                        const msg = JSON.stringify({
+                            type: "game_over",
+                            result: game.result,
+                            ...clockState(game),
+                        });
+
+                        game.white?.send(msg);
+                        game.black?.send(msg);
+                        return;
+                    }
+
                     game.clocks[sideToMove] += game.timeControl.increment;
                 }
 
@@ -339,6 +443,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     game.clockActive = sideToMove === "w" ? "b" : "w";
                     game.lastTickAt = Date.now();
                     scheduleFlagTimer(gameId, game);
+                    resetMoveAbortTimer(gameId, game);
                 }
 
                 const msg = JSON.stringify({

@@ -187,10 +187,19 @@ function closeSettings() {
 
 function loadSettings() {
     const saved = JSON.parse(localStorage.getItem("settings") ?? "{}");
-    usernameInput.value = saved.username ?? generateUsername();
-    selectedTheme = saved.theme ?? DEFAULT_SETTINGS.theme;
-    activeTheme = selectedTheme;
-    selectedPieceSet = saved.pieceSet ?? DEFAULT_SETTINGS.pieceSet;
+
+    const settings = {
+        username: saved.username?.trim() || generateUsername(),
+        theme: saved.theme ?? DEFAULT_SETTINGS.theme,
+        pieceSet: saved.pieceSet ?? DEFAULT_SETTINGS.pieceSet,
+    };
+
+    localStorage.setItem("settings", JSON.stringify(settings));
+
+    usernameInput.value = settings.username;
+    selectedTheme = settings.theme;
+    activeTheme = settings.theme;
+    selectedPieceSet = settings.pieceSet;
 }
 
 function resetSettingsForm() {
