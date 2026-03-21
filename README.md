@@ -14,10 +14,10 @@ Currently live [here!](https://chess.sahildash.dev) (if the dev server is runnin
 - Time keeping (9 different time controls!!!)
 - Settings page (change sounds, board, pieces)
 - Username system (with username banners while playing!!)
+- absolutly fire match start animation (lowk better than chess.com idk what to say)
 
 # TODO
 - chat(?)
-- like that chess.com animation where it shows you what your opponent's board looks like before the match starts
 
 # Usage
 run the following commands to install and run the app so far.
