@@ -284,6 +284,8 @@ function uciToSan(uci) {
     const promo = uci[4];
 
     const piece = engine.piece_on(fromSq);
+    if (!piece) return uci;
+
     const pieceType = piece[1];
     const fromFile = fromSq % 8;
     const fromRank = Math.floor(fromSq / 8);
@@ -505,6 +507,8 @@ function connect() {
             const isOwnMove = rollbackSnapshot !== null;
             rollbackSnapshot = null;
 
+            if (!gameStarted) return;
+
             applyClockState(msg);
 
             if (!isOwnMove) {
@@ -544,7 +548,9 @@ function connect() {
                 } else {
                     const fromRect = board.querySelector(`[data-sq="${fromSq}"]`)?.getBoundingClientRect();
                     const toRect = board.querySelector(`[data-sq="${toSq}"]`)?.getBoundingClientRect();
-                    const pieceCode = engine.piece_on(toSq);
+
+                    const pieceCode = engine.piece_on(toSq) ?? engine.piece_on(fromSq);
+                    if (!pieceCode) { checkGameOver(msg.result); return; }
 
                     animatingToSq = toSq;
                     animating = true;
