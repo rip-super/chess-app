@@ -11,10 +11,10 @@ Currently live [here!](https://chess.sahildash.dev) (if the dev server is runnin
 - Live app at [https://chess.sahildash.dev](https://chess.sahildash.dev)
 - draw/resign buttons
 - cooking home page (if i do say so myself)
-- Time keeping (currently only 10 min matches tho)
+- Time keeping (9 different time controls!!!)
+- Settings page (change sounds, board, pieces)
 
 # TODO
-- Settings page (change sounds, board, pieces)
 - Username system
 - chat(?)
 - like that chess.com animation where it shows you what your opponent's board looks like before the match starts
