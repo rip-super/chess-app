@@ -23,6 +23,7 @@ let isMatchmaking = false;
 const previewSquares = [];
 let previewBoardBuilt = false;
 let previewRenderToken = 0;
+let lastRenderedPieceSet = null;
 
 const previewThemes = {
     classic: { light: "#d9e4e8", dark: "#7b9eb2", panel: "#182229" },
@@ -43,11 +44,13 @@ const previewThemes = {
 };
 
 const pieceSets = [
-    "standard", "alpha", "caliente", "california", "cardinal", "cburnett", "celtic",
-    "chess7", "chessnut", "companion", "cooke", "fantasy", "fresca", "gioco", "lolz",
-    "governor", "horsey", "icpieces", "kiwen-suwi", "kosal", "leipzig", "letter",
-    "maestro", "merida", "monarchy", "mpchess", "neo", "pixel", "reillycraig",
-    "riohacha", "shapes", "spatial", "staunty", "tatiana", "xkcd",
+    "standard", "alpha", "anarchy", "caliente", "california",
+    "cardinal", "cburnett", "celtic", "chess7", "chessnut",
+    "companion", "cooke", "fantasy", "fresca", "gioco",
+    "governor", "horsey", "icpieces", "kiwen-suwi", "kosal",
+    "leipzig", "letter", "lolz", "maestro", "merida",
+    "monarchy", "mpchess", "neo", "pixel", "riohacha",
+    "shapes", "spatial", "staunty", "tatiana", "xkcd",
 ];
 
 const previewPosition = {
@@ -79,6 +82,7 @@ const DEFAULT_SETTINGS = {
 };
 
 let selectedTheme = DEFAULT_SETTINGS.theme;
+let activeTheme = DEFAULT_SETTINGS.theme;
 let selectedPieceSet = DEFAULT_SETTINGS.pieceSet;
 
 function generateUsername() {
@@ -174,13 +178,24 @@ function openSettings() {
 }
 
 function closeSettings() {
+    selectedTheme = activeTheme;
     settingsOverlay.classList.add("hidden");
 }
 
+function loadSettings() {
+    const saved = JSON.parse(localStorage.getItem("settings") ?? "{}");
+    usernameInput.value = saved.username ?? generateUsername();
+    selectedTheme = saved.theme ?? DEFAULT_SETTINGS.theme;
+    activeTheme = selectedTheme;
+    selectedPieceSet = saved.pieceSet ?? DEFAULT_SETTINGS.pieceSet;
+}
+
 function resetSettingsForm() {
-    usernameInput.value = generateUsername();
+    const saved = JSON.parse(localStorage.getItem("settings") ?? "{}");
+    usernameInput.value = saved.username ?? generateUsername();
     selectedTheme = DEFAULT_SETTINGS.theme;
     selectedPieceSet = DEFAULT_SETTINGS.pieceSet;
+
     renderSettingsUI();
     renderSettingsPreview();
 }
@@ -202,7 +217,7 @@ function buildSettingsPreviewBoard() {
             img.className = "preview-piece";
             img.alt = "";
             img.draggable = false;
-            img.style.display = "none";
+            img.style.display = "block";
 
             square.appendChild(img);
             previewBoard.appendChild(square);
@@ -221,6 +236,7 @@ function buildSettingsPreviewBoard() {
 async function renderSettingsPreview() {
     const renderToken = ++previewRenderToken;
     const palette = previewThemes[selectedTheme] || previewThemes.classic;
+    const pieceSetChanged = selectedPieceSet !== lastRenderedPieceSet;
 
     buildSettingsPreviewBoard();
     previewBoard.style.background = palette.panel;
@@ -233,29 +249,38 @@ async function renderSettingsPreview() {
         item.square.style.background = (row + col) % 2 === 0 ? palette.light : palette.dark;
 
         const pieceCode = previewPosition[item.index];
-        if (pieceCode) {
-            imageSources.push(getPieceAssetPath(selectedPieceSet, pieceCode));
-        }
+        if (pieceCode) imageSources.push(getPieceAssetPath(selectedPieceSet, pieceCode));
     }
 
-    const uniqueSources = [...new Set(imageSources)];
-    await Promise.all(uniqueSources.map(preloadImage));
+    if (!pieceSetChanged) return;
+
+    for (const item of previewSquares) {
+        item.img.style.opacity = "0";
+    }
+
+    await Promise.all([
+        ...[...new Set(imageSources)].map(preloadImage),
+        new Promise(r => setTimeout(r, 180)),
+    ]);
 
     if (renderToken !== previewRenderToken) return;
 
     for (const item of previewSquares) {
         const pieceCode = previewPosition[item.index];
-
-        if (!pieceCode) {
-            item.img.style.display = "none";
-            item.img.removeAttribute("src");
-            item.img.alt = "";
-            continue;
+        if (pieceCode) {
+            item.img.src = getPieceAssetPath(selectedPieceSet, pieceCode);
+            item.img.alt = pieceCode;
         }
+    }
 
-        item.img.src = getPieceAssetPath(selectedPieceSet, pieceCode);
-        item.img.alt = pieceCode;
-        item.img.style.display = "block";
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    if (renderToken !== previewRenderToken) return;
+
+    lastRenderedPieceSet = selectedPieceSet;
+
+    for (const item of previewSquares) {
+        const pieceCode = previewPosition[item.index];
+        if (pieceCode) item.img.style.opacity = "1";
     }
 }
 
@@ -354,12 +379,19 @@ settingsClose.addEventListener("click", closeSettings);
 settingsCancel.addEventListener("click", closeSettings);
 
 settingsSave.addEventListener("click", () => {
-    if (!usernameInput.value.trim()) {
-        usernameInput.value = generateUsername();
-    }
+    if (!usernameInput.value.trim()) usernameInput.value = generateUsername();
+
+    startBgMorph(activeTheme, selectedTheme);
+    activeTheme = selectedTheme;
+
+    localStorage.setItem("settings", JSON.stringify({
+        username: usernameInput.value.trim(),
+        theme: activeTheme,
+        pieceSet: selectedPieceSet,
+    }));
 
     closeSettings();
-    statusText.textContent = "Settings UI saved (not wired up yet).";
+    statusText.textContent = "";
 });
 
 settingsReset.addEventListener("click", () => {
@@ -415,6 +447,13 @@ const TILE = 64;
 
 let bgW, bgH, bgOffsetX = 0, bgOffsetY = 0, bgPrevTs = null;
 let bgAngle = Math.random() * Math.PI * 2;
+let bgFromPalette = null;
+let bgToPalette = null;
+let bgMorphProgress = 1;
+const BG_MORPH_DURATION = 600;
+let bgMorphStart = null;
+let bgCurrentLight = previewThemes.classic.light;
+let bgCurrentDark = previewThemes.classic.dark;
 
 function bgResize() {
     bgW = window.innerWidth;
@@ -424,15 +463,40 @@ function bgResize() {
     bgCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
 
+function lerpHex(a, b, t) {
+    const ah = parseInt(a.slice(1), 16);
+    const bh = parseInt(b.slice(1), 16);
+    const ar = (ah >> 16) & 0xff, ag = (ah >> 8) & 0xff, ab = ah & 0xff;
+    const br = (bh >> 16) & 0xff, bg = (bh >> 8) & 0xff, bb = bh & 0xff;
+    const r = Math.round(ar + (br - ar) * t);
+    const g = Math.round(ag + (bg - ag) * t);
+    const b2 = Math.round(ab + (bb - ab) * t);
+    return `rgb(${r},${g},${b2})`;
+}
+
+function startBgMorph(fromTheme, toTheme) {
+    bgFromPalette = previewThemes[fromTheme] ?? previewThemes.classic;
+    bgToPalette = previewThemes[toTheme] ?? previewThemes.classic;
+    bgMorphProgress = 0;
+    bgMorphStart = null;
+}
+
 function bgDraw(ts) {
     if (bgPrevTs === null) bgPrevTs = ts;
     const dt = Math.min((ts - bgPrevTs) / 1000, 0.1);
     bgPrevTs = ts;
 
     bgAngle += 0.0005 * 60 * dt;
-
     bgOffsetX += Math.cos(bgAngle) * 0.5 * 60 * dt;
     bgOffsetY += Math.sin(bgAngle) * 0.5 * 60 * dt;
+
+    if (bgMorphProgress < 1) {
+        if (!bgMorphStart) bgMorphStart = ts;
+        bgMorphProgress = Math.min((ts - bgMorphStart) / BG_MORPH_DURATION, 1);
+        const t = bgMorphProgress < 0.5 ? 2 * bgMorphProgress * bgMorphProgress : 1 - Math.pow(-2 * bgMorphProgress + 2, 2) / 2;
+        bgCurrentLight = lerpHex(bgFromPalette.light, bgToPalette.light, t);
+        bgCurrentDark = lerpHex(bgFromPalette.dark, bgToPalette.dark, t);
+    }
 
     const startCol = Math.floor(-bgOffsetX / TILE) - 1;
     const startRow = Math.floor(-bgOffsetY / TILE) - 1;
@@ -444,7 +508,8 @@ function bgDraw(ts) {
             const x = col * TILE + bgOffsetX;
             const y = row * TILE + bgOffsetY;
             const isLight = (((col % 2) + (row % 2)) % 2 + 2) % 2 === 0;
-            bgCtx.fillStyle = isLight ? "#d9e4e8" : "#7b9eb2";
+
+            bgCtx.fillStyle = isLight ? bgCurrentLight : bgCurrentDark;
             bgCtx.fillRect(x, y, TILE + 1, TILE + 1);
         }
     }
@@ -452,7 +517,7 @@ function bgDraw(ts) {
     requestAnimationFrame(bgDraw);
 }
 
-resetSettingsForm();
+loadSettings();
 window.addEventListener("resize", bgResize);
 bgResize();
 requestAnimationFrame(bgDraw);

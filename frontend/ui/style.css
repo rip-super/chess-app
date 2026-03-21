@@ -598,6 +598,7 @@ img {
     justify-content: center;
     min-width: 0;
     min-height: 0;
+    transition: background-color 0.25s ease;
 }
 
 .preview-piece {
@@ -607,6 +608,7 @@ img {
     pointer-events: none;
     user-select: none;
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+    transition: opacity 0.18s ease;
 }
 
 .settings-actions {
