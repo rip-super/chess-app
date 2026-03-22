@@ -23,13 +23,15 @@ const avatarPreviewImg = document.getElementById("avatar-preview");
 const avatarPlaceholder = document.getElementById("avatar-placeholder");
 const avatarRemoveBtn = document.getElementById("avatar-remove-btn");
 
+const previewSquares = [];
 let activeInterval = null;
 let isMatchmaking = false;
-const previewSquares = [];
 let previewBoardBuilt = false;
 let previewRenderToken = 0;
 let lastRenderedPieceSet = null;
 let pendingAvatarDataUrl = null;
+let waitingGameId = null;
+let currentTc = null;
 
 const previewThemes = {
     classic: { light: "#d9e4e8", dark: "#7b9eb2", lastMoveLight: "#5ab5d0", lastMoveDark: "#4a9ab8", selected: "#6cbad2", panel: "#182229" },
@@ -343,6 +345,11 @@ async function renderSettingsPreview() {
 }
 
 function cancelMatchmaking() {
+    if (waitingGameId) {
+        fetch(`/match/${waitingGameId}?tc=${encodeURIComponent(currentTc)}`, { method: "DELETE" });
+        waitingGameId = null;
+    }
+
     isMatchmaking = false;
     if (activeInterval) { clearInterval(activeInterval); activeInterval = null; }
     playBtn.disabled = false;
@@ -368,10 +375,11 @@ async function startMatchmaking(tc) {
         }
 
         if (data.waiting) {
-            const gameId = data.gameId;
+            waitingGameId = data.gameId;
+            currentTc = tc;
             activeInterval = setInterval(async () => {
                 try {
-                    const r = await fetch(`/match/${gameId}?tc=${encodeURIComponent(tc)}`);
+                    const r = await fetch(`/match/${waitingGameId}?tc=${encodeURIComponent(tc)}`);
                     const d = await r.json();
                     if (d.gameId) {
                         clearInterval(activeInterval);
@@ -436,7 +444,7 @@ settingsSave.addEventListener("click", () => {
     activeTheme = selectedTheme;
 
     localStorage.setItem("settings", JSON.stringify({
-        username: usernameInput.value.trim(),
+        username: usernameInput.value.trim().slice(0, 30),
         theme: activeTheme,
         pieceSet: selectedPieceSet,
         avatar: pendingAvatarDataUrl ?? null,

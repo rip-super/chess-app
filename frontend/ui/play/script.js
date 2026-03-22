@@ -39,6 +39,10 @@ function pieceImg(pieceCode) {
     return `assets/images/${pieceSet}/${pieceCode}.${pieceExt[pieceSet] ?? "svg"}`;
 }
 
+function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 let selectedSq = null;
 let legalTargets = [];
 let dragState = null;
@@ -91,6 +95,9 @@ const resignNo = document.getElementById("resign-no");
 const connStatus = document.getElementById("connection-status");
 const clockTop = document.getElementById("clock-top");
 const clockBottom = document.getElementById("clock-bottom");
+const chatLog = document.getElementById("chat-log");
+const chatInput = document.getElementById("chat-input");
+const chatSend = document.getElementById("chat-send");
 
 function pieceColor(piece) {
     return piece ? piece[0] : null;
@@ -108,6 +115,29 @@ function clearPremoves(shouldRender = true) {
     if (pendingPromotion?.premove) pendingPromotion = null;
     if (shouldRender) renderBoard(color === "b");
 }
+
+function sendChat() {
+    const text = chatInput.value.trim();
+    if (!text || !gameStarted) return;
+    ws.send(JSON.stringify({ type: "chat", message: text }));
+
+    const div = document.createElement("div");
+    div.className = "chat-msg chat-mine";
+    const name = document.createElement("span");
+    name.className = "chat-author";
+    name.textContent = username + ": ";
+    div.appendChild(name);
+    div.appendChild(document.createTextNode(text));
+    chatLog.appendChild(div);
+    chatLog.scrollTop = chatLog.scrollHeight;
+
+    chatInput.value = "";
+}
+
+chatSend.addEventListener("pointerdown", sendChat);
+chatInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); sendChat(); }
+});
 
 resignBtn.addEventListener("pointerdown", () => {
     resignConfirm.classList.remove("hidden");
@@ -270,14 +300,14 @@ async function playGameIntro() {
 
             <div class="intro-label intro-label-top">
                 <img class="intro-avatar intro-avatar-floating" src="${opponentAvatar}" alt="">
-                <span class="intro-label-name">${opponentUsername}</span>
+                <span class="intro-label-name">${escapeHtml(opponentUsername)}</span>
             </div>
 
             <div class="intro-vs">VS</div>
 
             <div class="intro-label intro-label-bottom">
                 <img class="intro-avatar intro-avatar-floating" src="${myAvatar}" alt="">
-                <span class="intro-label-name">${username}</span>
+                <span class="intro-label-name">${escapeHtml(username)}</span>
             </div>
         </div>
     `;
@@ -934,6 +964,19 @@ function connect() {
                     ws.send(JSON.stringify({ type: "claim_victory" }));
                 });
             }
+            return;
+        }
+
+        if (msg.type === "chat") {
+            const div = document.createElement("div");
+            div.className = "chat-msg";
+            const name = document.createElement("span");
+            name.className = "chat-author";
+            name.textContent = msg.username + ": ";
+            div.appendChild(name);
+            div.appendChild(document.createTextNode(msg.message));
+            chatLog.appendChild(div);
+            chatLog.scrollTop = chatLog.scrollHeight;
             return;
         }
 

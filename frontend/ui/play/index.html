@@ -28,6 +28,19 @@
         </div>
         <div id="sidebar">
             <div id="move-log"></div>
+            <div id="chat">
+                <div id="chat-log"></div>
+                <div id="chat-input-row">
+                    <input id="chat-input" type="text" placeholder="Message…" maxlength="200" autocomplete="off">
+                    <button id="chat-send">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                            <polyline points="12 5 19 12 12 19" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
             <div id="sidebar-actions">
                 <button class="action-btn" id="draw-btn">Draw</button>
                 <button class="action-btn danger" id="resign-btn">Resign</button>

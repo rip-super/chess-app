@@ -1,28 +1,58 @@
-this is a wip repo for my online chess app.
+# chess
 
-Currently live [here!](https://chess.sahildash.dev) (if the dev server is running lol)
+A fully featured online chess app with a custom Rust engine compiled to WebAssembly.
 
-# Completed Features
-- Bitboard Engine in Rust
-- Compiled to WASM
-- GUI to play
-- Matchmaking via WebSockets
-- Real Time Chess Playing
-- Live app at [https://chess.sahildash.dev](https://chess.sahildash.dev)
-- draw/resign buttons
-- cooking home page (if i do say so myself)
-- Time keeping (9 different time controls!!!)
-- Settings page (change sounds, board, pieces, username, profile pic)
-- Username system (with username banners while playing!!)
-- Profile pictures!!!!!
-- absolutly fire match start animation (lowk better than chess.com idk what to say)
+Currently live at [chess.sahildash.dev](https://chess.sahildash.dev) (if the dev server is running lol)
 
-# TODO
-- chat(?)
+---
 
-# Usage
-run the following commands to install and run the app so far.
+## The Engine
 
+The chess engine is written from scratch in Rust and compiled to WASM via wasm-bindgen, so it runs directly in the browser with no server round-trips for move validation.
+
+Under the hood:
+- **Bitboard representation** - each piece type and color gets its own 64-bit integer, with a mailbox for fast square lookups
+- **Magic bitboards** for sliding pieces (bishops, rooks, queens) - precomputed attack tables indexed by a magic number hash of the occupancy mask, giving O(1) attack generation
+- **Full legal move generation** - pseudo-legal moves are generated then filtered by make/undo, keeping the king out of check
+- **Draw detection** - threefold repetition, fifty-move rule, and insufficient material (including same-color bishop endings)
+- **Verified with perft** - node counts match known results up to depth 6 across all standard test positions
+
+---
+
+## Features
+
+**Gameplay**
+- Real-time multiplayer over WebSockets
+- 9 time controls (1+0 up to 30+0)
+- Premoves
+- Draw offers and resignation
+- Abandon detection - if neither player moves in the first 30 seconds, the game is abandoned
+- In-game chat
+
+**Presentation**
+- Match start animation (lowk better than chess.com, idk what to say)
+- Move history (with arrow keys)
+- Arrows and square highlights (right-click drag)
+- Piece animation
+
+**Customization**
+- 35 piece sets
+- 15 board themes
+- 500+ unique combinations!
+- Custom profile pictures
+- Username system with player banners
+
+---
+
+## Setup
+
+You'll need Rust, Node.js, and the following tools:
+```
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli
+```
+
+Clone and build:
 ```
 git clone https://github.com/rip-super/chess-app.git
 cd chess-app
@@ -30,20 +60,11 @@ cargo build -p wasm --release --target wasm32-unknown-unknown
 wasm-bindgen --target web --out-dir frontend/ui/wasm ./target/wasm32-unknown-unknown/release/wasm.wasm
 ```
 
-Note: you may need to add the wasm32-unknown-unknown target using rustup:
-```
-rustup target add wasm32-unknown-unknown
-```
-and you'll need to install the wasm-bindgen-cli:
-```
-cargo install wasm-bindgen-cli
-```
-
-Now run the server:
+Run the server:
 ```
 cd frontend
 npm i
 node server.js
 ```
 
-Go to `http://localhost:3000` and start playing!
+Then open `http://localhost:3000`.

@@ -49,6 +49,7 @@ function createNewGame(tcId = DEFAULT_TIME_CONTROL) {
         flagTimer: null,
         moveAbandonTimer: null,
         moveAbandonWarnTimer: null,
+        movesPlayed: 0,
         disconnectTimer: null,
     };
 }
@@ -147,6 +148,14 @@ function resetMoveAbortTimer(gameId, game) {
     }, MOVE_ABANDON_MS);
 }
 
+function sanitizeSettings(settings) {
+    if (!settings) return {};
+    return {
+        ...settings,
+        username: String(settings.username ?? "Guest").trim().slice(0, 30) || "Guest",
+    };
+}
+
 app.get("/match", (c) => {
     const tcId = c.req.query("tc") ?? DEFAULT_TIME_CONTROL;
     if (!TIME_CONTROLS[tcId]) return c.json({ error: "invalid time control" }, 400);
@@ -175,6 +184,16 @@ app.get("/match/:gameId", (c) => {
     return c.json({ error: "expired" }, 404);
 });
 
+app.delete("/match/:gameId", (c) => {
+    const gameId = c.req.param("gameId");
+    const tcId = c.req.query("tc") ?? DEFAULT_TIME_CONTROL;
+    if (waitingPlayers.get(tcId) === gameId) {
+        waitingPlayers.delete(tcId);
+        games.delete(gameId);
+    }
+    return c.json({ ok: true });
+});
+
 app.get("/ws/:gameId", upgradeWebSocket(c => {
     const gameId = c.req.param("gameId");
 
@@ -190,7 +209,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
         },
 
         onMessage(evt, ws) {
-            const { type, uci, token, settings } = JSON.parse(evt.data);
+            const { type, uci, token, settings, message } = JSON.parse(evt.data);
 
             if (type === "auth" && !games.has(gameId)) {
                 ws.send(JSON.stringify({ type: "not_found" }));
@@ -221,8 +240,8 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     }
 
                     if (settings) {
-                        if (restoredColor === "w") game.whiteSettings = settings;
-                        else game.blackSettings = settings;
+                        if (restoredColor === "w") game.whiteSettings = sanitizeSettings(settings);
+                        else game.blackSettings = sanitizeSettings(settings);
                     }
 
                     ws.send(JSON.stringify({ type: "assign", color: restoredColor }));
@@ -238,7 +257,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                 if (!game.white) {
                     game.white = ws;
                     game.tokens[token] = "w";
-                    game.whiteSettings = settings ?? {};
+                    game.whiteSettings = sanitizeSettings(settings);
 
                     console.log(`[${gameId}] player joined as white`);
                     ws.send(JSON.stringify({ type: "assign", color: "w" }));
@@ -250,14 +269,14 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                         game.black = game.white;
                         game.white = ws;
                         game.blackSettings = game.whiteSettings;
-                        game.whiteSettings = settings ?? {};
+                        game.whiteSettings = sanitizeSettings(settings);
                         console.log(`[${gameId}] player joined as white (colors swapped)`);
                         game.black.send(JSON.stringify({ type: "assign", color: "b" }));
                         ws.send(JSON.stringify({ type: "assign", color: "w" }));
                     } else {
                         game.black = ws;
                         game.tokens[token] = "b";
-                        game.blackSettings = settings ?? {};
+                        game.blackSettings = sanitizeSettings(settings);
                         console.log(`[${gameId}] player joined as black`);
                         ws.send(JSON.stringify({ type: "assign", color: "b" }));
                     }
@@ -393,6 +412,19 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                 return;
             }
 
+            if (type === "chat") {
+                if (game.result) return;
+                const senderColor = game.white === ws ? "w" : "b";
+                const senderSettings = senderColor === "w" ? game.whiteSettings : game.blackSettings;
+                const senderUsername = senderSettings?.username ?? "Guest";
+                const text = String(message ?? "").trim().slice(0, 200);
+                if (!text) return;
+
+                const opponent = senderColor === "w" ? game.black : game.white;
+                opponent?.send(JSON.stringify({ type: "chat", username: senderUsername, message: text }));
+                return;
+            }
+
             if (type !== "move") return;
 
             const sideToMove = game.engine.side_to_move();
@@ -432,6 +464,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                 }
 
                 game.engine.make_move(mv);
+                game.movesPlayed++;
                 const result = game.engine.game_result();
                 console.log(`[${gameId}] move ${uci} - result: ${result}`);
 
@@ -443,7 +476,7 @@ app.get("/ws/:gameId", upgradeWebSocket(c => {
                     game.clockActive = sideToMove === "w" ? "b" : "w";
                     game.lastTickAt = Date.now();
                     scheduleFlagTimer(gameId, game);
-                    resetMoveAbortTimer(gameId, game);
+                    if (game.movesPlayed < 2) resetMoveAbortTimer(gameId, game);
                 }
 
                 const msg = JSON.stringify({
