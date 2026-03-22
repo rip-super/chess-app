@@ -17,6 +17,11 @@ const usernameInput = document.getElementById("username-input");
 const themePicker = document.getElementById("theme-picker");
 const piecePicker = document.getElementById("piece-picker");
 const previewBoard = document.getElementById("settings-preview-board");
+const avatarUploadArea = document.getElementById("avatar-upload-area");
+const avatarFileInput = document.getElementById("avatar-file-input");
+const avatarPreviewImg = document.getElementById("avatar-preview");
+const avatarPlaceholder = document.getElementById("avatar-placeholder");
+const avatarRemoveBtn = document.getElementById("avatar-remove-btn");
 
 let activeInterval = null;
 let isMatchmaking = false;
@@ -24,6 +29,7 @@ const previewSquares = [];
 let previewBoardBuilt = false;
 let previewRenderToken = 0;
 let lastRenderedPieceSet = null;
+let pendingAvatarDataUrl = null;
 
 const previewThemes = {
     classic: { light: "#d9e4e8", dark: "#7b9eb2", lastMoveLight: "#5ab5d0", lastMoveDark: "#4a9ab8", selected: "#6cbad2", panel: "#182229" },
@@ -176,6 +182,8 @@ function renderSettingsUI() {
 
 function openSettings() {
     settingsOverlay.classList.remove("hidden");
+    pendingAvatarDataUrl = JSON.parse(localStorage.getItem("settings") ?? "{}").avatar ?? null;
+    applyAvatarPreview(pendingAvatarDataUrl);
     renderSettingsUI();
     renderSettingsPreview();
 }
@@ -192,6 +200,7 @@ function loadSettings() {
         username: saved.username?.trim() || generateUsername(),
         theme: saved.theme ?? DEFAULT_SETTINGS.theme,
         pieceSet: saved.pieceSet ?? DEFAULT_SETTINGS.pieceSet,
+        avatar: saved.avatar ?? null,
     };
 
     localStorage.setItem("settings", JSON.stringify(settings));
@@ -200,6 +209,7 @@ function loadSettings() {
     selectedTheme = settings.theme;
     activeTheme = settings.theme;
     selectedPieceSet = settings.pieceSet;
+    pendingAvatarDataUrl = settings.avatar;
 }
 
 function resetSettingsForm() {
@@ -207,9 +217,27 @@ function resetSettingsForm() {
     usernameInput.value = saved.username ?? generateUsername();
     selectedTheme = DEFAULT_SETTINGS.theme;
     selectedPieceSet = DEFAULT_SETTINGS.pieceSet;
+    pendingAvatarDataUrl = saved.avatar ?? null;
+    applyAvatarPreview(pendingAvatarDataUrl);
 
     renderSettingsUI();
     renderSettingsPreview();
+}
+
+function applyAvatarPreview(dataUrl) {
+    if (dataUrl) {
+        avatarPreviewImg.src = dataUrl;
+        avatarPreviewImg.style.display = "block";
+        avatarPlaceholder.style.display = "none";
+        avatarUploadArea.classList.add("has-image");
+        avatarRemoveBtn.classList.remove("hidden");
+    } else {
+        avatarPreviewImg.style.display = "none";
+        avatarPreviewImg.src = "";
+        avatarPlaceholder.style.display = "flex";
+        avatarUploadArea.classList.remove("has-image");
+        avatarRemoveBtn.classList.add("hidden");
+    }
 }
 
 function applyPreviewSquareColors() {
@@ -411,6 +439,7 @@ settingsSave.addEventListener("click", () => {
         username: usernameInput.value.trim(),
         theme: activeTheme,
         pieceSet: selectedPieceSet,
+        avatar: pendingAvatarDataUrl ?? null,
     }));
 
     closeSettings();
@@ -456,6 +485,24 @@ piecePicker.addEventListener("click", e => {
     selectedPieceSet = btn.dataset.pieceSet;
     renderSettingsUI();
     renderSettingsPreview();
+});
+
+avatarFileInput.addEventListener("change", () => {
+    const file = avatarFileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        pendingAvatarDataUrl = e.target.result;
+        applyAvatarPreview(pendingAvatarDataUrl);
+    };
+    reader.readAsDataURL(file);
+    avatarFileInput.value = "";
+});
+
+avatarRemoveBtn.addEventListener("click", e => {
+    e.stopPropagation();
+    pendingAvatarDataUrl = null;
+    applyAvatarPreview(null);
 });
 
 if (sessionStorage.getItem("autoplay")) {

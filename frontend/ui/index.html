@@ -84,9 +84,26 @@
             </div>
 
             <div class="settings-body">
-                <div class="settings-section">
-                    <label class="settings-label" for="username-input">Username</label>
-                    <input id="username-input" class="settings-input" type="text" maxlength="30" placeholder="Enter username">
+                <div class="settings-section avatar-username-section">
+                    <div class="avatar-col">
+                        <div class="avatar-upload-area" id="avatar-upload-area">
+                            <img id="avatar-preview" class="avatar-preview-img" style="display:none;">
+                            <div id="avatar-placeholder" class="avatar-placeholder">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <circle cx="12" cy="8" r="4" />
+                                    <path d="M4 20c0-3.9 3.6-7 8-7s8 3.1 8 7" />
+                                </svg>
+                                <span>Upload</span>
+                            </div>
+                            <input type="file" id="avatar-file-input" accept="image/*" class="avatar-file-input-overlay">
+                        </div>
+                        <button class="avatar-remove-btn hidden" id="avatar-remove-btn">Remove</button>
+                    </div>
+                    <div class="username-col">
+                        <label class="settings-label" for="username-input">Username</label>
+                        <input id="username-input" class="settings-input" type="text" maxlength="30" placeholder="Enter username">
+                    </div>
                 </div>
 
                 <div class="settings-pickers-row">

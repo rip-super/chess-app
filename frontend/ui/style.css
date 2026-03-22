@@ -324,7 +324,7 @@ img {
 
 .settings-panel {
     width: min(94vw, 980px);
-    max-height: min(88vh, 820px);
+    max-height: min(94vh, 900px);
     overflow: hidden;
     background: #182229;
     border: 1px solid rgba(123, 158, 178, 0.2);
@@ -411,6 +411,7 @@ img {
 
 .settings-input {
     width: 100%;
+    max-width: 320px;
     background: rgba(8, 12, 15, 0.75);
     border: 1px solid rgba(123, 158, 178, 0.14);
     color: var(--text);
@@ -677,4 +678,134 @@ img {
 .settings-save-btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 12px 28px rgba(123, 158, 178, 0.24);
+}
+
+.avatar-username-section {
+    display: flex;
+    flex-direction: row;
+    gap: 50px;
+    align-items: center;
+    justify-content: center;
+}
+
+.avatar-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.username-col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 280px;
+    flex: none;
+    min-width: 0;
+}
+
+.avatar-upload-area {
+    width: 142px;
+    height: 142px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 2px dashed rgba(123, 158, 178, 0.35);
+    background: rgba(0, 0, 0, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.avatar-upload-area:hover {
+    border-color: rgba(143, 180, 200, 0.75);
+    background: rgba(123, 158, 178, 0.08);
+}
+
+.avatar-upload-area.has-image {
+    border-style: solid;
+    border-color: rgba(143, 180, 200, 0.6);
+}
+
+.avatar-upload-area.has-image:hover::after {
+    content: "Change";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.52);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text);
+    border-radius: 50%;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.avatar-file-input-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    border-radius: 50%;
+    z-index: 2;
+}
+
+.avatar-preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.avatar-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: var(--muted);
+    pointer-events: none;
+}
+
+.avatar-placeholder svg {
+    width: 24px;
+    height: 24px;
+    opacity: 0.55;
+}
+
+.avatar-placeholder span {
+    font-size: 0.55rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.55;
+}
+
+.avatar-remove-btn {
+    background: transparent;
+    border: 1px solid rgba(201, 76, 76, 0.3);
+    color: #d79a9a;
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: "Inter", monospace;
+    padding: 5px 12px;
+    border-radius: 4px;
+    transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+    width: 108px;
+}
+
+.avatar-remove-btn:hover {
+    background: rgba(201, 76, 76, 0.1);
+    border-color: rgba(201, 76, 76, 0.6);
+    color: #e8aaaa;
 }

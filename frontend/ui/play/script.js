@@ -76,6 +76,8 @@ let opponentInfoReady = false;
 let opponentThemeKey = "classic";
 let opponentPieceSet = "standard";
 let opponentUsername = "Opponent";
+let myAvatar = null;
+let opponentAvatar = null;
 
 const board = document.getElementById("board");
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
@@ -267,18 +269,26 @@ async function playGameIntro() {
             </div>
 
             <div class="intro-label intro-label-top">
+                <img class="intro-avatar intro-avatar-floating" src="${opponentAvatar}" alt="">
                 <span class="intro-label-name">${opponentUsername}</span>
             </div>
 
             <div class="intro-vs">VS</div>
 
             <div class="intro-label intro-label-bottom">
+                <img class="intro-avatar intro-avatar-floating" src="${myAvatar}" alt="">
                 <span class="intro-label-name">${username}</span>
             </div>
         </div>
     `;
 
     document.getElementById("board-wrap").appendChild(overlay);
+
+    overlay.querySelectorAll(".intro-label-name").forEach(el => {
+        while (el.scrollWidth > 200 && parseFloat(getComputedStyle(el).fontSize) > 8) {
+            el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) - 0.5) + "px";
+        }
+    });
 
     overlay.classList.add("is-playing");
 
@@ -543,6 +553,7 @@ function connect() {
                 username: username,
                 pieceSet: pieceSet,
                 theme: savedSettings.theme ?? "classic",
+                avatar: savedSettings.avatar ?? null,
             }
         }));
     });
@@ -607,6 +618,12 @@ function connect() {
             });
 
             document.getElementById("player-name").textContent = username;
+
+            myAvatar = savedSettings.avatar ?? pieceImg(`${color}K`);
+            const avatarBottom = document.getElementById("avatar-bottom");
+            avatarBottom.src = savedSettings.avatar ?? pieceImg(`${color}K`);
+            avatarBottom.style.display = "block";
+
             renderBoard(color === "b");
             return;
         }
@@ -620,6 +637,11 @@ function connect() {
             opponentPieceSet = oppSet;
             opponentUsername = msg.username ?? "Opponent";
             opponentInfoReady = true;
+
+            opponentAvatar = msg.avatar ?? `assets/images/${oppSet}/${opp}K.${pieceExt[oppSet] ?? "svg"}`;
+            const avatarTop = document.getElementById("avatar-top");
+            avatarTop.src = msg.avatar ?? `assets/images/${oppSet}/${opp}K.${pieceExt[oppSet] ?? "svg"}`;
+            avatarTop.style.display = "block";
 
             preloadIntroAssets();
 
@@ -654,7 +676,7 @@ function connect() {
                 const secs = Math.ceil(remaining / 1000);
 
                 banner.innerHTML = `
-                    <span>${isUs ? "Make a move soon or the game will be abandoned" : "Waiting for opponent's move - game may be abandoned soon"}</span>
+                    <span>${isUs ? "Make a move or the game will be abandoned" : "Waiting for opponent's move - game may be abandoned soon"}</span>
                     <span style="font-size:0.65rem;color:var(--text-muted)">${secs}s remaining</span>
                 `;
 

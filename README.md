@@ -12,8 +12,9 @@ Currently live [here!](https://chess.sahildash.dev) (if the dev server is runnin
 - draw/resign buttons
 - cooking home page (if i do say so myself)
 - Time keeping (9 different time controls!!!)
-- Settings page (change sounds, board, pieces)
+- Settings page (change sounds, board, pieces, username, profile pic)
 - Username system (with username banners while playing!!)
+- Profile pictures!!!!!
 - absolutly fire match start animation (lowk better than chess.com idk what to say)
 
 # TODO
