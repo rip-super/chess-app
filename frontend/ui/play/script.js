@@ -84,6 +84,8 @@ let myAvatar = null;
 let opponentAvatar = null;
 
 const board = document.getElementById("board");
+board.style.touchAction = "none";
+
 const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
 
 const moveLog = document.getElementById("move-log");
@@ -365,6 +367,45 @@ function preloadIntroAssets() {
     return introAssetsPromise;
 }
 
+function applyMobileBarPieceLayout() {
+    const isMobile = window.matchMedia("(max-width: 900px)").matches;
+
+    const layouts = isMobile
+        ? {
+            top: [60, 88, 116, 144],
+            bottom: [58, 86, 114, 142],
+            height: "58%"
+        }
+        : {
+            top: [96, 160, 224, 288],
+            bottom: [96, 160, 224, 288],
+            height: "102%"
+        };
+
+    const topBar = document.getElementById("bar-pieces-top");
+    const bottomBar = document.getElementById("bar-pieces-bottom");
+
+    if (topBar) {
+        [...topBar.querySelectorAll("img")].forEach((img, i) => {
+            img.style.height = layouts.height;
+            img.style.width = "auto";
+            img.style.left = `${layouts.top[i] ?? layouts.top[layouts.top.length - 1]}px`;
+            img.style.right = "auto";
+            img.style.opacity = "1";
+        });
+    }
+
+    if (bottomBar) {
+        [...bottomBar.querySelectorAll("img")].forEach((img, i) => {
+            img.style.height = layouts.height;
+            img.style.width = "auto";
+            img.style.right = `${layouts.bottom[i] ?? layouts.bottom[layouts.bottom.length - 1]}px`;
+            img.style.left = "auto";
+            img.style.opacity = "1";
+        });
+    }
+}
+
 function deselect() {
     selectedSq = null;
     legalTargets = [];
@@ -634,6 +675,11 @@ function connect() {
             color = msg.color;
             colorKnown = true;
 
+            myAvatar = savedSettings.avatar ?? pieceImg(`${color}K`);
+            const avatarBottom = document.getElementById("avatar-bottom");
+            avatarBottom.src = savedSettings.avatar ?? pieceImg(`${color}K`);
+            avatarBottom.style.display = "block";
+
             preloadIntroAssets();
 
             const barEl = document.getElementById("bar-pieces-bottom");
@@ -649,10 +695,7 @@ function connect() {
 
             document.getElementById("player-name").textContent = username;
 
-            myAvatar = savedSettings.avatar ?? pieceImg(`${color}K`);
-            const avatarBottom = document.getElementById("avatar-bottom");
-            avatarBottom.src = savedSettings.avatar ?? pieceImg(`${color}K`);
-            avatarBottom.style.display = "block";
+            applyMobileBarPieceLayout();
 
             renderBoard(color === "b");
             return;
@@ -689,6 +732,8 @@ function connect() {
                 img.style.cssText = `position:absolute;height:102%;width:auto;left:${lefts[i]}px;top:50%;transform:translateY(-50%) rotate(${rots[i]}deg);opacity:1;pointer-events:none;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.4));`;
                 barEl.appendChild(img);
             });
+
+            applyMobileBarPieceLayout();
 
             document.getElementById("opponent-name").textContent = opponentUsername;
             return;
@@ -1659,6 +1704,19 @@ document.addEventListener("keydown", e => {
 
     renderBoard(color === "b");
 });
+
+document.addEventListener("pointercancel", () => {
+    pendingPointer = null;
+
+    if (!dragState) return;
+
+    dragState.ghostEl?.remove();
+    dragState = null;
+    deselect();
+    renderBoard(color === "b");
+});
+
+window.addEventListener("resize", applyMobileBarPieceLayout);
 
 renderBoard();
 updateClockDisplay();

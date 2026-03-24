@@ -1091,3 +1091,250 @@ body {
     border-color: var(--accent);
     color: var(--accent);
 }
+
+@media (max-width: 900px) {
+    :root {
+        --sq: min(12.6vw, 60px);
+        --clock-h: 50px;
+    }
+
+    body {
+        overflow-y: auto;
+        overflow-x: hidden;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 10px;
+    }
+
+    #game {
+        width: 100%;
+        max-width: 100%;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+
+    #board-wrap {
+        width: fit-content;
+        max-width: 100%;
+    }
+
+    #board {
+        margin: 0 auto;
+        max-width: 100%;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    .sq {
+        touch-action: none;
+    }
+
+    #sidebar {
+        width: min(100%, calc(var(--sq) * 8));
+        height: auto;
+        min-height: 0;
+        overflow: visible;
+    }
+
+    #move-log {
+        flex: 0 0 auto;
+        max-height: none;
+        min-height: 120px;
+        padding: 6px;
+    }
+
+    #chat {
+        height: auto;
+        min-height: 180px;
+        flex: 0 0 auto;
+    }
+
+    #chat-log {
+        min-height: 120px;
+        max-height: none;
+        padding: 6px;
+    }
+
+    #sidebar-actions {
+        padding: 8px;
+        gap: 5px;
+    }
+
+    .action-btn {
+        font-size: 0.66rem;
+        padding: 7px 6px;
+    }
+
+    .player-bar {
+        height: var(--clock-h);
+        gap: 8px;
+        padding: 0 10px;
+    }
+
+    .bar-avatar {
+        width: 32px;
+        height: 32px;
+    }
+
+    .player-name {
+        font-size: 0.72rem;
+    }
+
+    .clock {
+        font-size: 0.88rem;
+        padding: 4px 8px;
+    }
+
+    .bar-pieces {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+    }
+
+    .bar-pieces img {
+        height: 60% !important;
+        width: auto !important;
+        margin: 0 -3px !important;
+        opacity: 1 !important;
+    }
+
+    .piece-ghost {
+        width: calc(var(--sq) * 0.94);
+        height: calc(var(--sq) * 0.94);
+    }
+
+    .piece-anim {
+        z-index: 1200;
+    }
+
+    .intro-piece {
+        width: calc(var(--sq) * 1.25);
+        height: calc(var(--sq) * 1.25);
+    }
+
+    .intro-label {
+        left: 50%;
+        width: min(88%, 220px);
+        max-width: 88%;
+        padding: 10px 12px;
+        box-sizing: border-box;
+    }
+
+    .intro-avatar {
+        width: 52px;
+        height: 52px;
+    }
+
+    .intro-label-name {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.78rem;
+    }
+
+    .intro-vs {
+        width: 50px;
+        height: 30px;
+        font-size: 0.68rem;
+    }
+
+    #connection-status {
+        max-width: calc(100vw - 20px);
+        text-align: center;
+    }
+}
+
+@media (max-width: 560px) {
+    :root {
+        --sq: min(12.35vw, 50px);
+        --clock-h: 46px;
+    }
+
+    body {
+        padding: 8px;
+    }
+
+    #game {
+        gap: 8px;
+    }
+
+    #sidebar {
+        width: min(100%, calc(var(--sq) * 8));
+    }
+
+    #move-log {
+        min-height: 110px;
+        max-height: none;
+    }
+
+    #chat {
+        min-height: 170px;
+        height: auto;
+    }
+
+    #chat-log {
+        min-height: 110px;
+        max-height: none;
+    }
+
+    .player-bar {
+        padding: 0 8px;
+        gap: 6px;
+    }
+
+    .bar-avatar {
+        width: 28px;
+        height: 28px;
+    }
+
+    .player-name {
+        font-size: 0.67rem;
+    }
+
+    .clock {
+        font-size: 0.8rem;
+        padding: 3px 6px;
+    }
+
+    .bar-pieces img {
+        height: 50% !important;
+        margin: 0 -4px !important;
+        opacity: 1 !important;
+    }
+
+    .intro-piece {
+        width: calc(var(--sq) * 1.65);
+        height: calc(var(--sq) * 1.65);
+    }
+
+    .intro-avatar {
+        width: 42px;
+        height: 42px;
+    }
+
+    .intro-label {
+        width: min(92%, 200px);
+    }
+
+    .intro-label-top {
+        top: calc(50% - 12px);
+        --label-y: calc(-100% - 12px);
+    }
+
+    .intro-label-bottom {
+        top: calc(50% + 12px);
+        --label-y: 12px;
+    }
+
+    .intro-label-name {
+        font-size: 0.7rem;
+    }
+
+    .intro-vs {
+        width: 42px;
+        height: 24px;
+        font-size: 0.6rem;
+    }
+}

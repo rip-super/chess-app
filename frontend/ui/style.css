@@ -809,3 +809,210 @@ img {
     border-color: rgba(201, 76, 76, 0.6);
     color: #e8aaaa;
 }
+
+@media (max-width: 768px) {
+    body {
+        overflow-y: auto;
+        overflow-x: hidden;
+        align-items: flex-start;
+        justify-content: flex-start;
+        padding: 24px 16px;
+    }
+
+    main {
+        width: 100%;
+        min-height: calc(100vh - 48px);
+        gap: 28px;
+        justify-content: center;
+    }
+
+    img {
+        max-width: min(82vw, 360px);
+        height: auto;
+        max-height: 18vh;
+    }
+
+    .buttons {
+        width: min(100%, 320px);
+    }
+
+    .modal-overlay {
+        align-items: flex-start;
+        justify-content: center;
+        padding: 16px;
+        overflow-y: auto;
+    }
+
+    .settings-panel {
+        width: 100%;
+        max-width: 100%;
+        min-height: 0;
+        max-height: none;
+        padding: 16px;
+        gap: 16px;
+        border-radius: 10px;
+        box-sizing: border-box;
+    }
+
+    .settings-body {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        overflow: visible;
+        padding-right: 0;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .avatar-username-section {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .settings-section,
+    .avatar-col,
+    .username-col,
+    .settings-preview-wrap,
+    .settings-preview-card,
+    .settings-input,
+    .settings-pickers-row,
+    .option-picker,
+    .theme-picker,
+    .piece-picker {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+
+    .settings-pickers-row {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        align-items: stretch;
+    }
+
+    .option-picker {
+        align-self: stretch;
+    }
+
+    .theme-picker {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        justify-content: stretch;
+    }
+
+    .piece-picker {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        justify-content: stretch;
+    }
+
+    .option-tile,
+    .piece-option {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+
+    .piece-option {
+        min-height: 72px;
+        padding: 8px 4px;
+    }
+
+    .piece-option-thumb {
+        width: 32px;
+        height: 32px;
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        will-change: opacity;
+    }
+
+    .settings-preview-wrap {
+        order: 99;
+    }
+
+    .settings-preview-board {
+        width: min(100%, 320px);
+        margin-inline: auto;
+    }
+
+    .preview-piece {
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        will-change: opacity;
+    }
+
+    .settings-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .settings-actions-right {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+    }
+
+    .settings-actions .btn,
+    .settings-actions-right .btn,
+    .settings-reset-btn,
+    .settings-cancel-btn,
+    .settings-save-btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    body {
+        padding: 18px 12px;
+    }
+
+    main {
+        gap: 22px;
+    }
+
+    .status {
+        margin-top: -12px;
+        font-size: 0.68rem;
+    }
+
+    .settings-panel {
+        padding: 14px;
+    }
+
+    .settings-header-row {
+        align-items: flex-start;
+    }
+
+    .settings-header {
+        font-size: 16px;
+    }
+
+    .icon-close {
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+    }
+
+    .theme-picker {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .piece-picker {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .piece-option-name,
+    .option-tile-name {
+        font-size: 0.52rem;
+    }
+}

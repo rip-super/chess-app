@@ -24,7 +24,6 @@ const avatarPlaceholder = document.getElementById("avatar-placeholder");
 const avatarRemoveBtn = document.getElementById("avatar-remove-btn");
 
 const previewSquares = [];
-let activeInterval = null;
 let isMatchmaking = false;
 let previewBoardBuilt = false;
 let previewRenderToken = 0;
@@ -95,6 +94,8 @@ let selectedTheme = DEFAULT_SETTINGS.theme;
 let activeTheme = DEFAULT_SETTINGS.theme;
 let selectedPieceSet = DEFAULT_SETTINGS.pieceSet;
 let previewSelectedIdx = null;
+
+const MATCHMAKING_KEY = "im such an idiot that i dont read the ship logs to know that YOUR SUPPOSED TO USE AN INCOGNITO BROWSER TO PLAY AGAINST YOURSELF so i have to have a physical barrier stopping me from literally not listening to directions and opening the app in another tab INSTEAD OF A FREAKING INCOGNITO WINDOW...";
 
 function generateUsername() {
     const adjectives = [
@@ -306,13 +307,26 @@ async function renderSettingsPreview() {
     applyPreviewSquareColors();
 
     const imageSources = [];
-
     for (const item of previewSquares) {
         const pieceCode = previewPosition[item.index];
         if (pieceCode) imageSources.push(getPieceAssetPath(selectedPieceSet, pieceCode));
     }
 
-    if (!pieceSetChanged) return;
+    if (!pieceSetChanged) {
+        for (const item of previewSquares) {
+            const pieceCode = previewPosition[item.index];
+            if (!pieceCode) continue;
+
+            const wantedSrc = getPieceAssetPath(selectedPieceSet, pieceCode);
+            if (!item.img.src || !item.img.src.includes(wantedSrc)) {
+                item.img.src = wantedSrc;
+                item.img.alt = pieceCode;
+            }
+
+            item.img.style.opacity = "1";
+        }
+        return;
+    }
 
     for (const item of previewSquares) {
         item.img.style.opacity = "0";
@@ -325,13 +339,29 @@ async function renderSettingsPreview() {
 
     if (renderToken !== previewRenderToken) return;
 
+    const decodeJobs = [];
+
     for (const item of previewSquares) {
         const pieceCode = previewPosition[item.index];
-        if (pieceCode) {
-            item.img.src = getPieceAssetPath(selectedPieceSet, pieceCode);
-            item.img.alt = pieceCode;
+        if (!pieceCode) continue;
+
+        const nextSrc = getPieceAssetPath(selectedPieceSet, pieceCode);
+        item.img.src = nextSrc;
+        item.img.alt = pieceCode;
+
+        if (typeof item.img.decode === "function") {
+            decodeJobs.push(item.img.decode().catch(() => { }));
+        } else {
+            decodeJobs.push(new Promise(resolve => {
+                if (item.img.complete) return resolve();
+                item.img.onload = () => resolve();
+                item.img.onerror = () => resolve();
+            }));
         }
     }
+
+    await Promise.all(decodeJobs);
+    if (renderToken !== previewRenderToken) return;
 
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     if (renderToken !== previewRenderToken) return;
@@ -344,62 +374,98 @@ async function renderSettingsPreview() {
     }
 }
 
+async function startMatchmaking(tc) {
+    if (isMatchmaking) return;
+
+    isMatchmaking = true;
+    currentTc = tc;
+    waitingGameId = null;
+
+    playBtn.disabled = false;
+    playBtn.querySelector("span").textContent = "Cancel";
+    statusText.innerHTML = "Finding a game<span class='dots'></span>";
+    localStorage.setItem(MATCHMAKING_KEY, "1");
+
+    while (isMatchmaking) {
+        try {
+            if (!waitingGameId) {
+                const res = await fetch(`/match?tc=${encodeURIComponent(tc)}`);
+                const data = await res.json();
+
+                if (!isMatchmaking) return;
+
+                if (data.gameId && !data.waiting) {
+                    isMatchmaking = false;
+                    waitingGameId = null;
+                    currentTc = null;
+                    localStorage.removeItem(MATCHMAKING_KEY);
+                    localStorage.setItem("gameId", data.gameId);
+                    window.location.href = `/play/${data.gameId}`;
+                    return;
+                }
+
+                if (data.waiting && data.gameId) {
+                    waitingGameId = data.gameId;
+                } else if (data.waiting) {
+                    await new Promise(r => setTimeout(r, 500));
+                    continue;
+                } else {
+                    cancelMatchmaking();
+                    statusText.textContent = "Something went wrong - try again.";
+                    return;
+                }
+            }
+
+            const r = await fetch(`/match/${waitingGameId}?tc=${encodeURIComponent(tc)}`);
+            const d = await r.json();
+
+            if (!isMatchmaking) return;
+
+            if (d.gameId) {
+                isMatchmaking = false;
+                waitingGameId = null;
+                currentTc = null;
+                localStorage.removeItem(MATCHMAKING_KEY);
+                localStorage.setItem("gameId", d.gameId);
+                window.location.href = `/play/${d.gameId}`;
+                return;
+            }
+
+            if (d.error === "expired") {
+                waitingGameId = null;
+                await new Promise(r => setTimeout(r, 500));
+                continue;
+            }
+
+            if (d.waiting) {
+                await new Promise(r => setTimeout(r, 500));
+                continue;
+            }
+
+            cancelMatchmaking();
+            statusText.textContent = "Something went wrong - try again.";
+            return;
+        } catch {
+            if (!isMatchmaking) return;
+
+            cancelMatchmaking();
+            statusText.textContent = "Connection error - try again.";
+            return;
+        }
+    }
+}
+
 function cancelMatchmaking() {
     if (waitingGameId) {
         fetch(`/match/${waitingGameId}?tc=${encodeURIComponent(currentTc)}`, { method: "DELETE" });
         waitingGameId = null;
     }
 
+    localStorage.removeItem(MATCHMAKING_KEY);
     isMatchmaking = false;
-    if (activeInterval) { clearInterval(activeInterval); activeInterval = null; }
     playBtn.disabled = false;
     playBtn.querySelector("span").textContent = "Play";
     statusText.innerHTML = "";
-}
-
-async function startMatchmaking(tc) {
-    isMatchmaking = true;
-    playBtn.disabled = false;
-    playBtn.querySelector("span").textContent = "Cancel";
-    statusText.innerHTML = "Finding a game<span class='dots'></span>";
-
-    try {
-        const res = await fetch(`/match?tc=${encodeURIComponent(tc)}`);
-        const data = await res.json();
-
-        if (data.gameId && !data.waiting) {
-            isMatchmaking = false;
-            localStorage.setItem("gameId", data.gameId);
-            window.location.href = `/play/${data.gameId}`;
-            return;
-        }
-
-        if (data.waiting) {
-            waitingGameId = data.gameId;
-            currentTc = tc;
-            activeInterval = setInterval(async () => {
-                try {
-                    const r = await fetch(`/match/${waitingGameId}?tc=${encodeURIComponent(tc)}`);
-                    const d = await r.json();
-                    if (d.gameId) {
-                        clearInterval(activeInterval);
-                        activeInterval = null;
-                        isMatchmaking = false;
-                        localStorage.setItem("gameId", d.gameId);
-                        window.location.href = `/play/${d.gameId}`;
-                    } else if (d.error) {
-                        cancelMatchmaking();
-                        statusText.textContent = "Something went wrong - try again.";
-                    }
-                } catch {
-                    cancelMatchmaking();
-                }
-            }, 500);
-        }
-    } catch {
-        cancelMatchmaking();
-        statusText.textContent = "Connection error - try again.";
-    }
 }
 
 playBtn.addEventListener("click", () => {
@@ -451,7 +517,6 @@ settingsSave.addEventListener("click", () => {
     }));
 
     closeSettings();
-    statusText.textContent = "";
 });
 
 settingsReset.addEventListener("click", () => {
@@ -481,8 +546,14 @@ themePicker.addEventListener("click", e => {
     const btn = e.target.closest(".option-tile");
     if (!btn) return;
 
-    selectedTheme = btn.dataset.theme;
-    renderSettingsUI();
+    const nextTheme = btn.dataset.theme;
+    if (!nextTheme || nextTheme === selectedTheme) return;
+
+    selectedTheme = nextTheme;
+
+    themePicker.querySelectorAll(".option-tile.active").forEach(el => el.classList.remove("active"));
+    btn.classList.add("active");
+
     renderSettingsPreview();
 });
 
@@ -490,8 +561,14 @@ piecePicker.addEventListener("click", e => {
     const btn = e.target.closest(".piece-option");
     if (!btn) return;
 
-    selectedPieceSet = btn.dataset.pieceSet;
-    renderSettingsUI();
+    const nextPieceSet = btn.dataset.pieceSet;
+    if (!nextPieceSet || nextPieceSet === selectedPieceSet) return;
+
+    selectedPieceSet = nextPieceSet;
+
+    piecePicker.querySelectorAll(".piece-option.active").forEach(el => el.classList.remove("active"));
+    btn.classList.add("active");
+
     renderSettingsPreview();
 });
 
@@ -517,6 +594,24 @@ if (sessionStorage.getItem("autoplay")) {
     sessionStorage.removeItem("autoplay");
     tcOverlay.classList.remove("hidden");
 }
+
+if (localStorage.getItem(MATCHMAKING_KEY)) {
+    playBtn.disabled = true;
+    statusText.textContent = "You're already queued in another tab.";
+}
+
+window.addEventListener("storage", e => {
+    if (e.key !== MATCHMAKING_KEY) return;
+    playBtn.disabled = !!localStorage.getItem(MATCHMAKING_KEY);
+    statusText.textContent = localStorage.getItem(MATCHMAKING_KEY) ? "You're already queued in another tab." : "";
+});
+
+window.addEventListener("beforeunload", () => {
+    if (isMatchmaking) {
+        if (waitingGameId) fetch(`/match/${waitingGameId}?tc=${encodeURIComponent(currentTc)}`, { method: "DELETE", keepalive: true });
+        localStorage.removeItem(MATCHMAKING_KEY);
+    }
+});
 
 const bgCanvas = document.getElementById("bg-canvas");
 const bgCtx = bgCanvas.getContext("2d");
