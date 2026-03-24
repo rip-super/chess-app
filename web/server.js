@@ -3,9 +3,9 @@ import { createNodeWebSocket } from "@hono/node-ws";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { readFile } from "fs/promises";
-import init, { ChessEngine } from "./ui/wasm/wasm.js";
+import init, { ChessEngine } from "./frontend/wasm/wasm.js";
 
-const wasm = await readFile(new URL("./ui/wasm/wasm_bg.wasm", import.meta.url));
+const wasm = await readFile(new URL("./frotnend/wasm/wasm_bg.wasm", import.meta.url));
 await init({ module_or_path: wasm });
 
 const ABANDON_TIMEOUT_MS = 60 * 1000;

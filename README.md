@@ -57,12 +57,12 @@ Clone and build:
 git clone https://github.com/rip-super/chess-app.git
 cd chess-app
 cargo build -p wasm --release --target wasm32-unknown-unknown
-wasm-bindgen --target web --out-dir frontend/ui/wasm ./target/wasm32-unknown-unknown/release/wasm.wasm
+wasm-bindgen --target web --out-dir web/frontend/wasm ./target/wasm32-unknown-unknown/release/wasm.wasm
 ```
 
 Run the server:
 ```
-cd frontend
+cd web
 npm i
 node server.js
 ```

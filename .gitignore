@@ -1,5 +1,4 @@
 /target
 /*/target
-frontend/node_modules
-frontend/ui/wasm
-frontend/games
+web/node_modules
+web/frontend/wasm
