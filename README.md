@@ -2,7 +2,7 @@
 
 A fully featured online chess app with a custom Rust engine compiled to WebAssembly.
 
-Currently live at [chess.sahildash.dev](https://chess.sahildash.dev) (if the dev server is running lol)
+Currently live at [chess.sahildash.dev](https://chess.sahildash.dev)
 
 ---
 
