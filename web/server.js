@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { readFile } from "fs/promises";
 import init, { ChessEngine } from "./frontend/wasm/wasm.js";
 
-const wasm = await readFile(new URL("./frotnend/wasm/wasm_bg.wasm", import.meta.url));
+const wasm = await readFile(new URL("./frontend/wasm/wasm_bg.wasm", import.meta.url));
 await init({ module_or_path: wasm });
 
 const ABANDON_TIMEOUT_MS = 60 * 1000;
@@ -653,9 +653,9 @@ app.get("/ws/:gameId", upgradeWebSocket((c) => {
     };
 }));
 
-app.get("/", async (c) => c.html(await readFile("./ui/index.html", "utf8")));
-app.use("/*", serveStatic({ root: "./ui" }));
-app.get("/play/:gameId", async (c) => c.html(await readFile("./ui/play/index.html", "utf8")));
+app.get("/", async (c) => c.html(await readFile("./frontend/index.html", "utf8")));
+app.use("/*", serveStatic({ root: "./frontend" }));
+app.get("/play/:gameId", async (c) => c.html(await readFile("./frontend/play/index.html", "utf8")));
 
 const server = serve({ fetch: app.fetch, port: 3000 }, info => {
     console.log(`Server running on http://localhost:${info.port}`);
