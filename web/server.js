@@ -581,6 +581,9 @@ app.get("/ws/:gameId", upgradeWebSocket((c) => {
 
                     if (game.movesPlayed < 2) {
                         resetMoveAbortTimer(gameId, game);
+                    } else {
+                        if (game.moveAbortTimer) { clearTimeout(game.moveAbortTimer); game.moveAbortTimer = null; }
+                        if (game.moveAbortWarnTimer) { clearTimeout(game.moveAbortWarnTimer); game.moveAbortWarnTimer = null; }
                     }
                 }
 

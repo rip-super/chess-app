@@ -488,7 +488,8 @@ function pushMove(san) {
             if (blank) { blank.textContent = san; blank.dataset.idx = i; }
         }
     }
-    moveLog.scrollTop = moveLog.scrollHeight;
+
+    if (moveLog.scrollHeight > moveLog.clientHeight) moveLog.scrollTop = moveLog.scrollHeight;
 }
 
 function uciToSan(uci) {
@@ -1231,7 +1232,7 @@ function updateMoveLogHighlight() {
         const entry = moveLog.querySelector(`.move-entry[data-idx="${activeIdx}"]`);
         if (entry) {
             entry.classList.add("active");
-            entry.scrollIntoView({ block: "nearest" });
+            if (moveLog.scrollHeight > moveLog.clientHeight) entry.scrollIntoView({ block: "nearest" });
         }
     }
 }
