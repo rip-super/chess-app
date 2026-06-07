@@ -4,11 +4,14 @@ const PIECE_VALUES: [i32; 6] = [100, 320, 330, 500, 900, 10_000];
 
 fn evaluate(pos: &Position) -> i32 {
     let mut score = 0i32;
+
     for (piece, &value) in PIECE_VALUES.iter().enumerate() {
         let white = pos.bitboards.pieces[Color::White as usize][piece].count_ones() as i32;
         let black = pos.bitboards.pieces[Color::Black as usize][piece].count_ones() as i32;
+
         score += (white - black) * value;
     }
+
     if pos.side_to_move == Color::White {
         score
     } else {
@@ -18,12 +21,13 @@ fn evaluate(pos: &Position) -> i32 {
 
 const CHECKMATE_SCORE: i32 = 1_000_000;
 
-fn negamax(pos: &mut Position, depth: u32, mut alpha: i32, beta: i32) -> i32 {
+fn negamax(pos: &mut Position, depth: u32) -> i32 {
     if depth == 0 {
         return evaluate(pos);
     }
 
     let moves = pos.get_legal_moves();
+
     if moves.is_empty() {
         return if pos.is_in_check(pos.side_to_move) {
             -CHECKMATE_SCORE
@@ -32,20 +36,19 @@ fn negamax(pos: &mut Position, depth: u32, mut alpha: i32, beta: i32) -> i32 {
         };
     }
 
+    let mut best = -CHECKMATE_SCORE - 1;
+
     for mv in moves {
         let undo = pos.make_move(mv);
-        let score = -negamax(pos, depth - 1, -beta, -alpha);
+        let score = -negamax(pos, depth - 1);
         pos.undo_move(mv, undo);
 
-        if score >= beta {
-            return beta; // beta cutoff
-        }
-        if score > alpha {
-            alpha = score;
+        if score > best {
+            best = score;
         }
     }
 
-    alpha
+    best
 }
 
 pub struct Bot {
@@ -69,24 +72,21 @@ impl Bot {
         }
 
         let mut best_move = None;
-        let mut alpha = -CHECKMATE_SCORE - 1;
+        let mut best_score = -CHECKMATE_SCORE - 1;
 
         for mv in moves {
             let undo = gs.position.make_move(mv);
-            let score = -negamax(
-                &mut gs.position,
-                self.depth - 1,
-                -CHECKMATE_SCORE - 1,
-                -alpha,
-            );
+            let score = -negamax(&mut gs.position, self.depth - 1);
             gs.position.undo_move(mv, undo);
 
-            if score > alpha {
-                alpha = score;
-                best_move = Some(mv);
+            if score > best_score {
+                best_score = score;
+                best_move = Some(mv)
             }
         }
 
         best_move
     }
 }
+
+gauntlet::bot_main!();

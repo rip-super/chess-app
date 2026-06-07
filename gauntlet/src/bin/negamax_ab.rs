@@ -90,3 +90,5 @@ impl Bot {
         best_move
     }
 }
+
+gauntlet::bot_main!();

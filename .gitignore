@@ -3,3 +3,7 @@
 web/node_modules
 web/frontend/wasm
 .DS_STORE
+.venv/
+stockfish/
+games.pgn
+positions.txt
