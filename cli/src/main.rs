@@ -1,5 +1,97 @@
+use bot::*;
 use engine::*;
 use std::io::{self, Write};
+
+enum Controller {
+    Human,
+    Bot(Bot),
+}
+
+impl Controller {
+    fn is_bot(&self) -> bool {
+        matches!(self, Controller::Bot(_))
+    }
+}
+
+struct GameConfig {
+    white: Controller,
+    black: Controller,
+}
+
+impl GameConfig {
+    fn for_color(&mut self, color: Color) -> &mut Controller {
+        match color {
+            Color::White => &mut self.white,
+            Color::Black => &mut self.black,
+        }
+    }
+
+    fn is_bot(&self, color: Color) -> bool {
+        match color {
+            Color::White => self.white.is_bot(),
+            Color::Black => self.black.is_bot(),
+        }
+    }
+}
+
+fn read_line(prompt: &str) -> String {
+    print!("{}", prompt);
+    io::stdout().flush().unwrap();
+    let mut s = String::new();
+    io::stdin().read_line(&mut s).unwrap();
+    s.trim().to_string()
+}
+
+fn setup_game() -> GameConfig {
+    println!("Select game mode:");
+    println!("  1  Player vs Player");
+    println!("  2  Player vs Bot");
+    println!("  3  Bot vs Bot");
+
+    let mode = loop {
+        match read_line("> ").as_str() {
+            "1" => break 1u8,
+            "2" => break 2,
+            "3" => break 3,
+            _ => println!("Please enter 1, 2, or 3."),
+        }
+    };
+
+    match mode {
+        1 => GameConfig {
+            white: Controller::Human,
+            black: Controller::Human,
+        },
+        2 => {
+            println!("\nPlay as:");
+            println!("  1  White");
+            println!("  2  Black");
+
+            let human_color = loop {
+                match read_line("> ").as_str() {
+                    "1" => break Color::White,
+                    "2" => break Color::Black,
+                    _ => println!("Please enter 1 or 2."),
+                }
+            };
+
+            match human_color {
+                Color::White => GameConfig {
+                    white: Controller::Human,
+                    black: Controller::Bot(Bot::new()),
+                },
+                Color::Black => GameConfig {
+                    white: Controller::Bot(Bot::new()),
+                    black: Controller::Human,
+                },
+            }
+        }
+        _ => GameConfig {
+            white: Controller::Bot(Bot::new()),
+            black: Controller::Bot(Bot::new()),
+        },
+    }
+}
 
 fn parse_uci(input: &str, gs: &GameState) -> Option<Move> {
     if input.len() < 4 {
@@ -154,6 +246,7 @@ fn print_position(gs: &GameState) {
     }
     println!("  +------------------------+");
     println!("    a  b  c  d  e  f  g  h");
+    println!();
     println!("Side to move: {:?}", pos.side_to_move);
 
     println!(
@@ -192,56 +285,58 @@ fn print_position(gs: &GameState) {
 }
 
 fn main() {
+    let mut config = setup_game();
     let mut gs = GameState::new();
+    println!();
 
     loop {
         print_position(&gs);
 
         if gs.result != GameResult::Ongoing {
             match gs.result {
-                GameResult::Checkmate(winner) => {
-                    println!("Checkmate! {:?} wins.", winner);
-                }
-                GameResult::Stalemate => {
-                    println!("Stalemate!");
-                }
-                GameResult::DrawFiftyMove => {
-                    println!("Draw by fifty-move rule!");
-                }
-                GameResult::DrawRepetition => {
-                    println!("Draw by threefold repetition!");
-                }
+                GameResult::Checkmate(winner) => println!("Checkmate! {:?} wins.", winner),
+                GameResult::Stalemate => println!("Stalemate!"),
+                GameResult::DrawFiftyMove => println!("Draw by fifty-move rule!"),
+                GameResult::DrawRepetition => println!("Draw by threefold repetition!"),
                 GameResult::DrawInsufficientMaterial => {
-                    println!("Draw due to insufficient material!");
+                    println!("Draw due to insufficient material!")
                 }
                 GameResult::Ongoing => {}
             }
             break;
         }
 
+        let side = gs.position.side_to_move;
+
+        if let Controller::Bot(bot) = config.for_color(side) {
+            if let Some(mv) = bot.best_move(&mut gs) {
+                gs.make_move(mv).unwrap();
+            }
+            continue;
+        }
+
         print!("Enter move (uci, undo, quit): ");
         io::stdout().flush().unwrap();
 
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
-        let input = input.trim();
-
-        if input == "quit" {
-            break;
-        }
-
-        if input == "undo" {
-            gs.undo_move();
-            continue;
-        }
-
-        let Some(mv) = parse_uci(input, &gs) else {
-            println!("Invalid input.");
-            continue;
-        };
-
-        if let Err(msg) = gs.make_move(mv) {
-            println!("{}", msg);
+        let input = read_line("Enter move (uci, undo, quit): ");
+        match input.as_str() {
+            "quit" => break,
+            "undo" => {
+                let just_played = side.opposite();
+                gs.undo_move();
+                if config.is_bot(just_played) {
+                    gs.undo_move();
+                }
+            }
+            mv_str => {
+                let Some(mv) = parse_uci(mv_str, &gs) else {
+                    println!("Invalid input.");
+                    continue;
+                };
+                if let Err(msg) = gs.make_move(mv) {
+                    println!("{}", msg);
+                }
+            }
         }
     }
 }
