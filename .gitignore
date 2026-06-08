@@ -7,3 +7,4 @@ web/frontend/wasm
 stockfish/
 games.pgn
 positions.txt
+results.pgn

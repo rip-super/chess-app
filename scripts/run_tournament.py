@@ -12,7 +12,8 @@ Usage:
         ./target/release/bot2 \
         scripts/positions.txt \
         --name-a bot1 --name-b bot2 \
-        --move-time 100
+        --move-time 100 \
+        --pgn results.pgn
 """
 
 import argparse
@@ -21,6 +22,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from datetime import date
 
 MAX_PLIES = 400
 
@@ -60,10 +62,29 @@ class BotProcess:
 # region: Game
 
 import chess
+import chess.pgn
 
-def play_game(white: BotProcess, black: BotProcess, start_fen: str) -> str:
-    """Returns 'white', 'black', or 'draw'."""
+def play_game(
+    white: BotProcess,
+    black: BotProcess,
+    start_fen: str,
+    round_num: int | None = None,
+) -> tuple[str, chess.pgn.Game]:
+    """
+    Returns (outcome, pgn_game) where outcome is 'white', 'black', or 'draw'.
+    pgn_game is a chess.pgn.Game with full move list and headers filled in.
+    """
     board = chess.Board(start_fen)
+
+    game = chess.pgn.Game()
+    game.setup(board)
+    game.headers["White"] = white.name
+    game.headers["Black"] = black.name
+    game.headers["Date"] = date.today().strftime("%Y.%m.%d")
+    if round_num is not None:
+        game.headers["Round"] = str(round_num)
+
+    node = game
 
     for _ in range(MAX_PLIES):
         if board.is_game_over(claim_draw=True):
@@ -73,20 +94,54 @@ def play_game(white: BotProcess, black: BotProcess, start_fen: str) -> str:
         move_str = bot.get_move(board.fen())
 
         if move_str is None:
-            return "black" if board.turn == chess.WHITE else "white"
+            outcome = "black" if board.turn == chess.WHITE else "white"
+            pgn_result = "0-1" if outcome == "black" else "1-0"
+            game.headers["Result"] = pgn_result
+            game.headers["Termination"] = f"{bot.name} returned no move"
+            return outcome, game
+
         try:
             move = chess.Move.from_uci(move_str)
         except ValueError:
-            return "black" if board.turn == chess.WHITE else "white"
-        if move not in board.legal_moves:
-            return "black" if board.turn == chess.WHITE else "white"
+            outcome = "black" if board.turn == chess.WHITE else "white"
+            pgn_result = "0-1" if outcome == "black" else "1-0"
+            game.headers["Result"] = pgn_result
+            game.headers["Termination"] = f"{bot.name} returned an invalid move ({move_str!r})"
+            return outcome, game
 
+        if move not in board.legal_moves:
+            outcome = "black" if board.turn == chess.WHITE else "white"
+            pgn_result = "0-1" if outcome == "black" else "1-0"
+            game.headers["Result"] = pgn_result
+            game.headers["Termination"] = f"{bot.name} returned an illegal move ({move_str!r})"
+            return outcome, game
+
+        node = node.add_variation(move)
         board.push(move)
+
     else:
-        return "draw"
+        game.headers["Result"] = "1/2-1/2"
+        game.headers["Termination"] = f"adjudicated draw (exceeded {MAX_PLIES} plies)"
+        return "draw", game
 
     result = board.result(claim_draw=True)
-    return {"1-0": "white", "0-1": "black"}.get(result, "draw")
+    outcome = {"1-0": "white", "0-1": "black"}.get(result, "draw")
+
+    game.headers["Result"] = result
+    if board.is_checkmate():
+        game.headers["Termination"] = "checkmate"
+    elif board.is_stalemate():
+        game.headers["Termination"] = "stalemate"
+    elif board.is_insufficient_material():
+        game.headers["Termination"] = "insufficient material"
+    elif board.is_seventyfive_moves():
+        game.headers["Termination"] = "75-move rule"
+    elif board.is_fivefold_repetition():
+        game.headers["Termination"] = "fivefold repetition"
+    else:
+        game.headers["Termination"] = "normal"
+
+    return outcome, game
 
 # endregion
 
@@ -121,6 +176,7 @@ def run_tournament(
     extra_a: list[str], extra_b: list[str],
     name_a: str, name_b: str,
     move_time: int | None = None,
+    pgn_path: str | None = None,
 ) -> Results:
     if move_time is not None:
         extra_a = ["--time", str(move_time)]
@@ -138,16 +194,26 @@ def run_tournament(
     bot_a = BotProcess(binary_a, extra_a, name_a)
     bot_b = BotProcess(binary_b, extra_b, name_b)
 
+    pgn_out = open(pgn_path, "w") if pgn_path else None
+    if pgn_path:
+        print(f"  Writing PGNs to: {pgn_path}")
+
     start = time.time()
+    round_num = 0
 
     try:
         for i, fen in enumerate(selected):
             for a_is_white in (True, False):
+                round_num += 1
                 white, black = (bot_a, bot_b) if a_is_white else (bot_b, bot_a)
-                outcome = play_game(white, black, fen)
+                outcome, pgn_game = play_game(white, black, fen, round_num=round_num)
+
+                if pgn_out is not None:
+                    print(pgn_game, file=pgn_out)
+                    print(file=pgn_out)
+                    pgn_out.flush()
 
                 if outcome == "white":
-                    (results.a_wins if a_is_white else results.b_wins).__class__
                     if a_is_white: results.a_wins += 1
                     else:          results.b_wins += 1
                 elif outcome == "black":
@@ -169,6 +235,8 @@ def run_tournament(
     finally:
         bot_a.close()
         bot_b.close()
+        if pgn_out is not None:
+            pgn_out.close()
 
     print()
     return results
@@ -187,7 +255,10 @@ if __name__ == "__main__":
     parser.add_argument("--args-b",  nargs=argparse.REMAINDER, default=[])
     parser.add_argument("--move-time", type=int, default=None,
                         help="Max ms per move, applied to both bots")
-    
+    parser.add_argument("--pgn", default=None, metavar="FILE",
+                        help="Write all game PGNs to this file (one game per round, "
+                             "flushed incrementally so partial runs are not lost)")
+
     args = parser.parse_args()
 
     name_a = args.name_a or args.bot_a
@@ -200,6 +271,7 @@ if __name__ == "__main__":
         args.args_a, args.args_b,
         name_a, name_b,
         move_time=args.move_time,
+        pgn_path=args.pgn,
     )
 
     results.print_summary(name_a, name_b)
