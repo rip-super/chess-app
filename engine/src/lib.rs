@@ -374,7 +374,7 @@ pub struct Bitboards {
     pub pieces: [[u64; 6]; 2],
     color: [u64; 2],
     all: u64,
-    mailbox: [Option<(u8, u8)>; 64],
+    pub mailbox: [Option<(u8, u8)>; 64],
 }
 
 impl Bitboards {
