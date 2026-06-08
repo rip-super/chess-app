@@ -25,15 +25,26 @@ macro_rules! bot_main {
 
         fn main() {
             use std::io::{BufRead, Write};
+            use std::time::Duration;
 
             let args: Vec<String> = std::env::args().collect();
-            let depth = args
+
+            let mut bot = if let Some(ms) = args
+                .windows(2)
+                .find(|w| w[0] == "--time")
+                .and_then(|w| w[1].parse::<u64>().ok())
+            {
+                Bot::with_time(Duration::from_millis(ms))
+            } else if let Some(depth) = args
                 .windows(2)
                 .find(|w| w[0] == "--depth")
-                .and_then(|w| w[1].parse().ok())
-                .unwrap_or(3u32);
+                .and_then(|w| w[1].parse::<u32>().ok())
+            {
+                Bot::with_depth(depth)
+            } else {
+                Bot::new()
+            };
 
-            let mut bot = Bot::with_depth(depth);
             let stdin = std::io::stdin();
             let stdout = std::io::stdout();
             let mut out = stdout.lock();

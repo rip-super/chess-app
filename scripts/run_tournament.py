@@ -119,7 +119,12 @@ def run_tournament(
     n_positions: int,
     extra_a: list[str], extra_b: list[str],
     name_a: str, name_b: str,
+    move_time: int | None = None,
 ) -> Results:
+    if move_time is not None:
+        extra_a = ["--time", str(move_time)]
+        extra_b = ["--time", str(move_time)]
+
     all_positions = [l.strip() for l in open(positions_file) if l.strip()]
 
     if len(all_positions) < n_positions:
@@ -174,12 +179,14 @@ if __name__ == "__main__":
     parser.add_argument("bot_a",     help="Path to bot A binary")
     parser.add_argument("bot_b",     help="Path to bot B binary")
     parser.add_argument("positions", help="Positions file (one FEN per line)")
-    parser.add_argument("--n",       type=int, default=500, dest="n_positions",
-                        help="Number of positions to sample (default 500 -> 1000 games)")
+    parser.add_argument("--n",       type=int, default=500, dest="n_positions")
     parser.add_argument("--name-a",  default=None)
     parser.add_argument("--name-b",  default=None)
     parser.add_argument("--args-a",  nargs=argparse.REMAINDER, default=[])
     parser.add_argument("--args-b",  nargs=argparse.REMAINDER, default=[])
+    parser.add_argument("--move-time", type=int, default=None,
+                        help="Max ms per move, applied to both bots")
+    
     args = parser.parse_args()
 
     name_a = args.name_a or args.bot_a
@@ -191,5 +198,7 @@ if __name__ == "__main__":
         args.n_positions,
         args.args_a, args.args_b,
         name_a, name_b,
+        move_time=args.move_time,
     )
+
     results.print_summary(name_a, name_b)

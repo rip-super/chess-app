@@ -1,17 +1,25 @@
 use engine::*;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 struct Bot {
     seed: u64,
 }
 
 impl Bot {
+    fn new() -> Self {
+        Self::with_depth(0)
+    }
+
     fn with_depth(_depth: u32) -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)
             .unwrap_or(0xDEADBEEF);
         Bot { seed }
+    }
+
+    fn with_time(_max_time: Duration) -> Self {
+        Self::new()
     }
 
     fn rand(&mut self) -> u64 {
