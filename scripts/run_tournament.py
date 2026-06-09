@@ -26,7 +26,7 @@ import subprocess
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 
 MAX_PLIES = 400
