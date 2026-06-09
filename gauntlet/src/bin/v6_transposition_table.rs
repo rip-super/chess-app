@@ -35,6 +35,26 @@ impl Default for TTEntry {
     }
 }
 
+fn score_to_tt(score: i32, ply: usize) -> i32 {
+    if score > CHECKMATE_SCORE - MAX_DEPTH as i32 {
+        score + ply as i32
+    } else if score < -CHECKMATE_SCORE + MAX_DEPTH as i32 {
+        score - ply as i32
+    } else {
+        score
+    }
+}
+
+fn score_from_tt(score: i32, ply: usize) -> i32 {
+    if score > CHECKMATE_SCORE - MAX_DEPTH as i32 {
+        score - ply as i32
+    } else if score < -CHECKMATE_SCORE + MAX_DEPTH as i32 {
+        score + ply as i32
+    } else {
+        score
+    }
+}
+
 fn evaluate(pos: &Position) -> i32 {
     let mut score = 0i32;
     for (piece, &value) in PIECE_VALUES.iter().enumerate() {
@@ -123,15 +143,7 @@ impl Bot {
                 }
 
                 let piece = pos.bitboards.mailbox[mv.from as usize].map_or(0, |(_, p)| p as usize);
-                let hist = self.history[piece][mv.to as usize].min(7_000);
-
-                let penalty = if pos.is_attacked_by_pawn(mv.to, pos.side_to_move.opposite()) {
-                    PIECE_VALUES[piece]
-                } else {
-                    0
-                };
-
-                hist - penalty
+                self.history[piece][mv.to as usize].min(7_000)
             }
         }
     }
@@ -154,7 +166,7 @@ impl Bot {
         self.rep_history[ply] = hash;
         for i in (0..ply).step_by(2) {
             if self.rep_history[i] == hash {
-                return -50;
+                return 0;
             }
         }
 
@@ -168,16 +180,18 @@ impl Bot {
             if tt_entry.depth >= depth {
                 let score = tt_entry.score;
                 match tt_entry.flag {
-                    TTFlag::Exact => return score,
+                    TTFlag::Exact => return score_from_tt(score, ply),
                     TTFlag::LowerBound => {
-                        if score >= beta {
-                            return score;
+                        let adjusted = score_from_tt(score, ply);
+                        if adjusted >= beta {
+                            return beta;
                         }
-                        alpha = alpha.max(score);
+                        alpha = alpha.max(adjusted);
                     }
                     TTFlag::UpperBound => {
-                        if score <= alpha {
-                            return score;
+                        let adjusted = score_from_tt(score, ply);
+                        if adjusted <= alpha {
+                            return alpha;
                         }
                     }
                 }
@@ -241,7 +255,7 @@ impl Bot {
                 self.tt[tt_idx] = TTEntry {
                     hash,
                     depth,
-                    score: beta,
+                    score: score_to_tt(beta, ply),
                     flag: TTFlag::LowerBound,
                     best_move: Some(mv),
                 };
@@ -258,7 +272,7 @@ impl Bot {
         self.tt[tt_idx] = TTEntry {
             hash,
             depth,
-            score: alpha,
+            score: score_to_tt(alpha, ply),
             flag: if alpha > original_alpha {
                 TTFlag::Exact
             } else {
@@ -333,3 +347,5 @@ impl Bot {
         best_move
     }
 }
+
+gauntlet::bot_main!();

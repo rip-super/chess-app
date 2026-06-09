@@ -2,6 +2,7 @@ use bot::*;
 use engine::*;
 use std::io::{self, Write};
 
+#[allow(clippy::large_enum_variant)]
 enum Controller {
     Human,
     Bot(Bot),

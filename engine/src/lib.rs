@@ -362,6 +362,7 @@ pub struct Undo {
     en_passant: Option<u8>,
     halfmove_clock: u32,
     fullmove_count: u32,
+    hash: u64,
 }
 
 // endregion
@@ -548,12 +549,13 @@ pub struct Position {
     halfmove_clock: u32,
     fullmove_count: u32,
     zobrist_keys: ZobristKeys,
+    hash: u64,
 }
 
 impl Position {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self {
+        let mut pos = Self {
             bitboards: Bitboards::new(),
             side_to_move: Color::White,
             castling_rights: 0b1111,
@@ -561,7 +563,12 @@ impl Position {
             halfmove_clock: 0,
             fullmove_count: 1,
             zobrist_keys: ZobristKeys::new(),
-        }
+            hash: 0,
+        };
+
+        pos.hash = pos.compute_hash();
+
+        pos
     }
 
     pub fn from_fen(fen: &str) -> Self {
@@ -648,7 +655,7 @@ impl Position {
             None
         };
 
-        Self {
+        let mut pos = Self {
             bitboards,
             side_to_move,
             castling_rights,
@@ -656,7 +663,11 @@ impl Position {
             halfmove_clock,
             fullmove_count,
             zobrist_keys: ZobristKeys::new(),
-        }
+            hash: 0,
+        };
+
+        pos.hash = pos.compute_hash();
+        pos
     }
 
     pub fn to_fen(&self) -> String {
@@ -742,7 +753,7 @@ impl Position {
         fen
     }
 
-    fn zobrist_hash(&self) -> u64 {
+    fn compute_hash(&self) -> u64 {
         let mut hash = 0;
 
         for color in 0..2 {
@@ -779,6 +790,10 @@ impl Position {
         }
 
         hash
+    }
+
+    pub fn zobrist_hash(&self) -> u64 {
+        self.hash
     }
 
     pub fn piece_on(&self, square: u8) -> Option<(Color, Piece)> {
@@ -849,6 +864,12 @@ impl Position {
         self.square_under_attack(king_sq, color.opposite())
     }
 
+    pub fn is_attacked_by_pawn(&self, sq: u8, by_color: Color) -> bool {
+        let attack_idx = by_color.opposite() as usize;
+        let pawn_bb = self.bitboards.pieces[by_color as usize][Piece::Pawn as usize];
+        PAWN_ATTACKS[attack_idx][sq as usize] & pawn_bb != 0
+    }
+
     pub fn make_move(&mut self, mv: Move) -> Undo {
         let moved_piece = self.piece_on(mv.from).expect("No piece on from-square").1;
         let color_idx = self.side_to_move as usize;
@@ -860,6 +881,7 @@ impl Position {
             en_passant: self.en_passant,
             halfmove_clock: self.halfmove_clock,
             fullmove_count: self.fullmove_count,
+            hash: self.hash,
         };
 
         let is_capture = matches!(
@@ -868,21 +890,29 @@ impl Position {
         );
         let is_pawn_move = moved_piece == Piece::Pawn
             || matches!(mv.flag, MoveFlag::Promotion | MoveFlag::PromotionCapture);
-
         if is_capture || is_pawn_move {
             self.halfmove_clock = 0;
         } else {
             self.halfmove_clock += 1;
         }
 
+        if let Some(ep) = self.en_passant {
+            self.hash ^= self.zobrist_keys.en_passant[(ep % 8) as usize];
+        }
+        for i in 0..4u8 {
+            if self.castling_rights & (1 << i) != 0 {
+                self.hash ^= self.zobrist_keys.castling[i as usize];
+            }
+        }
+
         if let Some(captured) = undo.captured
             && mv.flag != MoveFlag::EnPassant
         {
-            let captured_color_idx = 1 - color_idx;
+            let cap_color = 1 - color_idx;
+            self.hash ^= self.zobrist_keys.pieces[cap_color][captured as usize][mv.to as usize];
             self.bitboards
-                .clear_piece(captured_color_idx, captured as usize, mv.to);
+                .clear_piece(cap_color, captured as usize, mv.to);
         }
-
         if undo.captured == Some(Piece::Rook) && mv.flag != MoveFlag::EnPassant {
             match mv.to {
                 0 => self.castling_rights &= !0b0010,
@@ -895,12 +925,19 @@ impl Position {
 
         match mv.flag {
             MoveFlag::Promotion | MoveFlag::PromotionCapture => {
-                let promo_idx = mv.promotion.expect("Promotion move missing piece") as usize;
+                let promo = mv.promotion.expect("Promotion move missing piece");
+                self.hash ^=
+                    self.zobrist_keys.pieces[color_idx][Piece::Pawn as usize][mv.from as usize];
+                self.hash ^= self.zobrist_keys.pieces[color_idx][promo as usize][mv.to as usize];
                 self.bitboards
                     .clear_piece(color_idx, Piece::Pawn as usize, mv.from);
-                self.bitboards.set_piece(color_idx, promo_idx, mv.to);
+                self.bitboards.set_piece(color_idx, promo as usize, mv.to);
             }
             _ => {
+                self.hash ^=
+                    self.zobrist_keys.pieces[color_idx][moved_piece as usize][mv.from as usize];
+                self.hash ^=
+                    self.zobrist_keys.pieces[color_idx][moved_piece as usize][mv.to as usize];
                 self.bitboards
                     .clear_piece(color_idx, moved_piece as usize, mv.from);
                 self.bitboards
@@ -914,32 +951,38 @@ impl Position {
             } else {
                 mv.to + 8
             };
+            self.hash ^=
+                self.zobrist_keys.pieces[1 - color_idx][Piece::Pawn as usize][cap_sq as usize];
             self.bitboards
                 .clear_piece(1 - color_idx, Piece::Pawn as usize, cap_sq);
         }
 
         match mv.flag {
             MoveFlag::KingCastle => {
-                let (rook_from, rook_to) = if self.side_to_move == Color::White {
+                let (rf, rt) = if self.side_to_move == Color::White {
                     (7u8, 5u8)
                 } else {
                     (63u8, 61u8)
                 };
+                self.hash ^= self.zobrist_keys.pieces[color_idx][Piece::Rook as usize][rf as usize];
+                self.hash ^= self.zobrist_keys.pieces[color_idx][Piece::Rook as usize][rt as usize];
                 self.bitboards
-                    .clear_piece(color_idx, Piece::Rook as usize, rook_from);
+                    .clear_piece(color_idx, Piece::Rook as usize, rf);
                 self.bitboards
-                    .set_piece(color_idx, Piece::Rook as usize, rook_to);
+                    .set_piece(color_idx, Piece::Rook as usize, rt);
             }
             MoveFlag::QueenCastle => {
-                let (rook_from, rook_to) = if self.side_to_move == Color::White {
+                let (rf, rt) = if self.side_to_move == Color::White {
                     (0u8, 3u8)
                 } else {
                     (56u8, 59u8)
                 };
+                self.hash ^= self.zobrist_keys.pieces[color_idx][Piece::Rook as usize][rf as usize];
+                self.hash ^= self.zobrist_keys.pieces[color_idx][Piece::Rook as usize][rt as usize];
                 self.bitboards
-                    .clear_piece(color_idx, Piece::Rook as usize, rook_from);
+                    .clear_piece(color_idx, Piece::Rook as usize, rf);
                 self.bitboards
-                    .set_piece(color_idx, Piece::Rook as usize, rook_to);
+                    .set_piece(color_idx, Piece::Rook as usize, rt);
             }
             _ => {}
         }
@@ -982,6 +1025,16 @@ impl Position {
             _ => None,
         };
 
+        for i in 0..4u8 {
+            if self.castling_rights & (1 << i) != 0 {
+                self.hash ^= self.zobrist_keys.castling[i as usize];
+            }
+        }
+        if let Some(ep) = self.en_passant {
+            self.hash ^= self.zobrist_keys.en_passant[(ep % 8) as usize];
+        }
+        self.hash ^= self.zobrist_keys.side_to_move;
+
         if self.side_to_move == Color::Black {
             self.fullmove_count += 1;
         }
@@ -992,7 +1045,9 @@ impl Position {
     }
 
     pub fn undo_move(&mut self, mv: Move, undo: Undo) {
+        self.hash = undo.hash;
         self.side_to_move = self.side_to_move.opposite();
+
         let color_idx = self.side_to_move as usize;
 
         match mv.flag {
@@ -1056,6 +1111,7 @@ impl Position {
         self.castling_rights = undo.castling_rights;
         self.en_passant = undo.en_passant;
         self.halfmove_clock = undo.halfmove_clock;
+        self.fullmove_count = undo.fullmove_count;
     }
 
     fn get_pawn_moves(&self, moves: &mut Vec<Move>) {
