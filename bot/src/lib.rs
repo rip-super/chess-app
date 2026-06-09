@@ -1,6 +1,9 @@
 use engine::*;
+use std::time::{Duration, Instant};
 
 const PIECE_VALUES: [i32; 6] = [100, 320, 330, 500, 900, 10_000];
+const CHECKMATE_SCORE: i32 = 1_000_000;
+const TIMEOUT: i32 = i32::MAX;
 
 fn evaluate(pos: &Position) -> i32 {
     let mut score = 0i32;
@@ -16,9 +19,11 @@ fn evaluate(pos: &Position) -> i32 {
     }
 }
 
-const CHECKMATE_SCORE: i32 = 1_000_000;
+fn negamax(pos: &mut Position, depth: u32, mut alpha: i32, beta: i32, deadline: Instant) -> i32 {
+    if Instant::now() >= deadline {
+        return TIMEOUT;
+    }
 
-fn negamax(pos: &mut Position, depth: u32, mut alpha: i32, beta: i32) -> i32 {
     if depth == 0 {
         return evaluate(pos);
     }
@@ -34,11 +39,16 @@ fn negamax(pos: &mut Position, depth: u32, mut alpha: i32, beta: i32) -> i32 {
 
     for mv in moves {
         let undo = pos.make_move(mv);
-        let score = -negamax(pos, depth - 1, -beta, -alpha);
+        let raw = negamax(pos, depth - 1, -beta, -alpha, deadline);
         pos.undo_move(mv, undo);
 
+        if raw == TIMEOUT {
+            return TIMEOUT;
+        }
+        let score = -raw;
+
         if score >= beta {
-            return beta; // beta cutoff
+            return beta;
         }
         if score > alpha {
             alpha = score;
@@ -50,16 +60,30 @@ fn negamax(pos: &mut Position, depth: u32, mut alpha: i32, beta: i32) -> i32 {
 
 pub struct Bot {
     pub depth: u32,
+    pub max_time: Option<Duration>,
 }
 
 impl Bot {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Bot { depth: 4 }
+        Bot {
+            depth: u32::MAX,
+            max_time: Some(Duration::from_millis(500)),
+        }
     }
 
     pub fn with_depth(depth: u32) -> Self {
-        Bot { depth }
+        Bot {
+            depth,
+            max_time: Some(Duration::from_millis(500)),
+        }
+    }
+
+    pub fn with_time(max_time: Duration) -> Self {
+        Bot {
+            depth: u32::MAX,
+            max_time: Some(max_time),
+        }
     }
 
     pub fn best_move(&mut self, gs: &mut GameState) -> Option<Move> {
@@ -68,21 +92,43 @@ impl Bot {
             return None;
         }
 
-        let mut best_move = None;
-        let mut alpha = -CHECKMATE_SCORE - 1;
+        let deadline = Instant::now() + self.max_time.unwrap_or(Duration::from_millis(500));
 
-        for mv in moves {
-            let undo = gs.position.make_move(mv);
-            let score = -negamax(
-                &mut gs.position,
-                self.depth - 1,
-                -CHECKMATE_SCORE - 1,
-                -alpha,
-            );
-            gs.position.undo_move(mv, undo);
+        let mut best_move = moves.first().copied();
 
-            if score > alpha {
-                alpha = score;
+        for depth in 1..=self.depth {
+            if Instant::now() >= deadline {
+                break;
+            }
+
+            let mut current_best = None;
+            let mut alpha = -CHECKMATE_SCORE - 1;
+            let mut completed = true;
+
+            for &mv in &moves {
+                let undo = gs.position.make_move(mv);
+                let raw = negamax(
+                    &mut gs.position,
+                    depth - 1,
+                    -CHECKMATE_SCORE - 1,
+                    -alpha,
+                    deadline,
+                );
+                gs.position.undo_move(mv, undo);
+
+                if raw == TIMEOUT {
+                    completed = false;
+                    break;
+                }
+
+                let score = -raw;
+                if score > alpha {
+                    alpha = score;
+                    current_best = Some(mv);
+                }
+            }
+
+            if completed && let Some(mv) = current_best {
                 best_move = Some(mv);
             }
         }

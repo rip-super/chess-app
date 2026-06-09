@@ -1,5 +1,6 @@
 """
 Reads a Lichess PGN file and extracts balanced positions filtered by Stockfish.
+Make sure the stockfish binary is in a folder called stockfish in the scripts directory.
 
 Usage:
     python gen_positions.py scripts/games.pgn positions.txt

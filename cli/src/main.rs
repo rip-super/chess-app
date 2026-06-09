@@ -43,6 +43,8 @@ fn read_line(prompt: &str) -> String {
 }
 
 fn setup_game() -> GameConfig {
+    let make_bot = || Controller::Bot(Bot::new());
+
     println!("Select game mode:");
     println!("  1  Player vs Player");
     println!("  2  Player vs Bot");
@@ -78,17 +80,17 @@ fn setup_game() -> GameConfig {
             match human_color {
                 Color::White => GameConfig {
                     white: Controller::Human,
-                    black: Controller::Bot(Bot::new()),
+                    black: make_bot(),
                 },
                 Color::Black => GameConfig {
-                    white: Controller::Bot(Bot::new()),
+                    white: make_bot(),
                     black: Controller::Human,
                 },
             }
         }
         _ => GameConfig {
-            white: Controller::Bot(Bot::new()),
-            black: Controller::Bot(Bot::new()),
+            white: make_bot(),
+            black: make_bot(),
         },
     }
 }

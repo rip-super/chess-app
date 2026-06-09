@@ -11,7 +11,8 @@ Usage:
         ./target/release/bot1 \
         ./target/release/bot2 \
         scripts/positions.txt \
-        --name-a bot1 --name-b bot2
+        --name-a bot1 --name-b bot2 \
+        --move-time 100
 """
 
 import argparse
