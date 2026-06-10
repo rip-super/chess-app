@@ -258,14 +258,15 @@ impl Square {
 
 mod tables;
 use tables::*;
+pub use tables::{KING_ATTACKS, KNIGHT_ATTACKS, PAWN_ATTACKS};
 
-fn get_bishop_attacks(sq: usize, occ: u64) -> u64 {
+pub fn get_bishop_attacks(sq: usize, occ: u64) -> u64 {
     let masked = occ & BISHOP_MASKS[sq];
     let idx = masked.wrapping_mul(BISHOP_MAGICS[sq]) >> BISHOP_SHIFTS[sq];
     BISHOP_DATA[BISHOP_OFFSETS[sq] + idx as usize]
 }
 
-fn get_rook_attacks(sq: usize, occ: u64) -> u64 {
+pub fn get_rook_attacks(sq: usize, occ: u64) -> u64 {
     let masked = occ & ROOK_MASKS[sq];
     let idx = masked.wrapping_mul(ROOK_MAGICS[sq]) >> ROOK_SHIFTS[sq];
     ROOK_DATA[ROOK_OFFSETS[sq] + idx as usize]
