@@ -39,6 +39,7 @@ class BotProcess:
             [binary] + extra_args,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
         )
@@ -47,10 +48,23 @@ class BotProcess:
         try:
             self._proc.stdin.write(fen + "\n")
             self._proc.stdin.flush()
+
             move = self._proc.stdout.readline().strip()
+
+            if not move:
+                err = self._proc.stderr.read()
+                print(f"\n[{self.name}] stderr:\n{err}", file=sys.stderr)
+
+            if self._proc.poll() is not None:
+                print(f"{self.name} died early!", file=sys.stderr)
+                sys.exit(1)
+
             return move if move and move != "none" else None
+
         except Exception as e:
+            err = self._proc.stderr.read()
             print(f"\n[{self.name}] communication error: {e}", file=sys.stderr)
+            print(f"\n[{self.name}] stderr:\n{err}", file=sys.stderr)
             return None
 
     def close(self) -> None:

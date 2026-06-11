@@ -366,6 +366,12 @@ pub struct Undo {
     hash: u64,
 }
 
+pub struct NullUndo {
+    en_passant: Option<u8>,
+    halfmove_clock: u32,
+    hash: u64,
+}
+
 // endregion
 
 // region: Bitboards
@@ -1113,6 +1119,33 @@ impl Position {
         self.en_passant = undo.en_passant;
         self.halfmove_clock = undo.halfmove_clock;
         self.fullmove_count = undo.fullmove_count;
+    }
+
+    pub fn make_null_move(&mut self) -> NullUndo {
+        let undo = NullUndo {
+            en_passant: self.en_passant,
+            halfmove_clock: self.halfmove_clock,
+            hash: self.hash,
+        };
+
+        if let Some(ep) = self.en_passant {
+            self.hash ^= self.zobrist_keys.en_passant[(ep % 8) as usize];
+        }
+
+        self.hash ^= self.zobrist_keys.side_to_move;
+
+        self.side_to_move = self.side_to_move.opposite();
+        self.en_passant = None;
+        self.halfmove_clock += 1;
+
+        undo
+    }
+
+    pub fn undo_null_move(&mut self, undo: NullUndo) {
+        self.hash = undo.hash;
+        self.side_to_move = self.side_to_move.opposite();
+        self.en_passant = undo.en_passant;
+        self.halfmove_clock = undo.halfmove_clock;
     }
 
     fn get_pawn_moves(&self, moves: &mut Vec<Move>) {

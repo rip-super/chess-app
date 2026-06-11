@@ -1,3 +1,9 @@
 [workspace]
 members = ["engine", "cli", "wasm", "bot", "gauntlet"]
 resolver = "3"
+
+[profile.rel-info]
+inherits = "release"
+debug = true
+debug-assertions = true
+overflow-checks = true

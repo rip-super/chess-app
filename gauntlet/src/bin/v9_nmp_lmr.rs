@@ -726,6 +726,9 @@ impl Bot {
 
         for (i, mv) in moves.iter().enumerate() {
             let mv = *mv;
+
+            let piece = pos.bitboards.mailbox[mv.from as usize].map_or(0, |(_, p)| p as usize);
+
             let undo = pos.make_move(mv);
 
             let is_quiet = matches!(
@@ -744,12 +747,11 @@ impl Bot {
 
                 if is_pv {
                     r -= 1;
-                };
+                }
                 if improving {
                     r -= 1;
-                };
+                }
 
-                let piece = pos.bitboards.mailbox[mv.from as usize].map_or(0, |(_, p)| p as usize);
                 r -= (self.history[piece][mv.to as usize] / 4096).clamp(-2, 2);
 
                 r.clamp(0, (depth as i32) - 1) as u32
@@ -808,8 +810,6 @@ impl Bot {
                         k[0] = Some(mv);
                     }
 
-                    let piece =
-                        pos.bitboards.mailbox[mv.from as usize].map_or(0, |(_, p)| p as usize);
                     self.history[piece][mv.to as usize] += (depth * depth) as i32;
                 }
 
@@ -822,11 +822,6 @@ impl Bot {
                 };
 
                 return beta;
-            }
-
-            if score > alpha {
-                alpha = score;
-                best_move_found = Some(mv);
             }
 
             if score > alpha {
@@ -943,3 +938,5 @@ impl Bot {
         best_move
     }
 }
+
+gauntlet::bot_main!();
