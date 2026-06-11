@@ -1,6 +1,11 @@
 use engine::*;
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 const PIECE_VALUES: [i32; 6] = [100, 320, 330, 500, 900, 10_000];
 const CHECKMATE_SCORE: i32 = 1_000_000;
@@ -450,10 +455,14 @@ struct OpeningBook {
 
 impl OpeningBook {
     fn new(data: &str) -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .subsec_nanos();
+
+        #[cfg(target_arch = "wasm32")]
+        let seed = js_sys::Date::now() as u32;
 
         let mut positions = HashMap::new();
 

@@ -1,4 +1,6 @@
+use bot::*;
 use engine::*;
+use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -259,4 +261,53 @@ impl ChessEngine {
             .map(|mv| JsValue::from(ChessMove(mv)))
             .collect()
     }
+}
+
+#[wasm_bindgen]
+pub struct ChessBot {
+    bot: Bot,
+}
+
+#[wasm_bindgen]
+impl ChessBot {
+    #[wasm_bindgen(constructor)]
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        ChessBot { bot: Bot::new() }
+    }
+
+    pub fn set_move_time(&mut self, ms: u32) {
+        self.bot.max_time = Some(Duration::from_millis(ms as u64));
+        self.bot.depth = u32::MAX;
+    }
+
+    pub fn set_depth(&mut self, depth: u32) {
+        self.bot.depth = depth;
+        self.bot.max_time = None;
+    }
+
+    pub fn best_move(&mut self, fen: &str) -> Option<String> {
+        let mut gs = GameState::from_fen(fen);
+        self.bot.best_move(&mut gs).map(mv_to_uci)
+    }
+}
+
+fn mv_to_uci(mv: Move) -> String {
+    let mut s = format!(
+        "{}{}{}{}",
+        (mv.from % 8 + b'a') as char,
+        (mv.from / 8 + b'1') as char,
+        (mv.to % 8 + b'a') as char,
+        (mv.to / 8 + b'1') as char,
+    );
+    if let Some(p) = mv.promotion {
+        s.push(match p {
+            Piece::Queen => 'q',
+            Piece::Rook => 'r',
+            Piece::Bishop => 'b',
+            Piece::Knight => 'n',
+            _ => unreachable!(),
+        });
+    }
+    s
 }

@@ -3,7 +3,7 @@ import { createNodeWebSocket } from "@hono/node-ws";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { readFile } from "fs/promises";
-import init, { ChessEngine } from "./frontend/wasm/wasm.js";
+import init, { ChessEngine, ChessBot } from "./frontend/wasm/wasm.js";
 
 const wasm = await readFile(new URL("./frontend/wasm/wasm_bg.wasm", import.meta.url));
 await init({ module_or_path: wasm });
@@ -12,6 +12,7 @@ const ABANDON_TIMEOUT_MS = 60 * 1000;
 const MOVE_ABANDON_MS = 30 * 1000;
 const MOVE_ABANDON_WARNING_MS = 15 * 1000;
 const MATCH_RESERVE_TIMEOUT_MS = 10 * 1000;
+const BOT_WAIT_TIMEOUT_MS = 15_000;
 
 const TIME_CONTROLS = {
     "1+0": { initial: 60_000, increment: 0 },
@@ -25,6 +26,32 @@ const TIME_CONTROLS = {
     "30+0": { initial: 30 * 60_000, increment: 0 },
 };
 
+const BOT_SEARCH_MS = {
+    "1+0": 250, "1+1": 250, "2+1": 400,
+    "3+0": 550, "3+2": 550, "5+0": 850,
+    "10+0": 1200, "15+10": 1700, "30+0": 2600,
+};
+
+const BOT_ADJECTIVES = [
+    "Quiet", "Swift", "Bold", "Silver", "Golden",
+    "Rapid", "Calm", "Shadow", "Royal", "Clever",
+];
+
+const BOT_CHESS_WORDS = [
+    "Pawn", "Knight", "Bishop", "Rook", "Queen",
+    "King", "Castle", "Fork", "Pin", "Gambit",
+];
+
+const BOT_THEMES = [
+    "classic", "chess.com", "lichess", "arctic", "ember",
+    "amethyst", "lagoon", "brass", "nebula", "mint", "obsidian", "retro",
+];
+
+const BOT_PIECE_SETS = [
+    "standard", "cburnett", "merida", "neo", "staunty",
+    "tatiana", "maestro", "fantasy", "celtic",
+];
+
 const DEFAULT_TIME_CONTROL = "10+0";
 
 const app = new Hono();
@@ -32,6 +59,94 @@ const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
 const games = new Map();
 const waitingPlayers = new Map();
+
+class BotPlayer {
+    constructor(gameId, color, tcId, profile) {
+        this.gameId = gameId;
+        this.color = color;
+        this.profile = profile;
+        this.isBot = true;
+        this.tcId = tcId;
+        this.bot = new ChessBot();
+        this.bot.set_move_time(BOT_SEARCH_MS[tcId] ?? 1000);
+        this.moveTimer = null;
+    }
+
+    send(data) {
+        if (typeof data !== "string") return;
+        try {
+            const msg = JSON.parse(data);
+            if (msg.type === "sync" || (msg.type === "move" && msg.result === "ongoing")) {
+                this.scheduleMoveOnTurn();
+            }
+        } catch { }
+    }
+
+    scheduleMoveOnTurn() {
+        const game = games.get(this.gameId);
+        if (!game || game.result) return;
+        if (game.engine.side_to_move() !== this.color) return;
+
+        if (this.moveTimer) clearTimeout(this.moveTimer);
+
+        const introBuffer = game.movesPlayed === 0 ? 3500 : 0;
+        const isOpening = game.movesPlayed < 12;
+
+        const pause = isOpening
+            ? 500 + Math.random() * 700
+            : 1000 + Math.random() * 1800;
+
+        const base = BOT_SEARCH_MS[this.tcId] ?? 1000;
+        const r = Math.random();
+        const mult = r < 0.08 ? 0.1 + Math.random() * 0.15
+            : r < 0.13 ? 1.9 + Math.random() * 0.6
+                : 0.5 + Math.random() * 1.0;
+
+        this.pendingSearchMs = Math.max(80, Math.round(base * mult));
+        this.bot.set_move_time(this.pendingSearchMs);
+
+        this.moveTimer = setTimeout(() => this.makeMove(), introBuffer + pause);
+    }
+
+    makeMove() {
+        const game = games.get(this.gameId);
+        if (!game || game.result) return;
+        if (game.engine.side_to_move() !== this.color) return;
+
+        const t0 = Date.now();
+        const uci = this.bot.best_move(game.engine.get_fen());
+        if (!uci) return;
+
+        const elapsed = Date.now() - t0;
+
+        const wasInstant = elapsed < Math.min(200, this.pendingSearchMs * 0.25);
+        const postPause = wasInstant ? 200 + Math.random() * 600 : 0;
+
+        if (postPause > 0) {
+            const g2 = games.get(this.gameId);
+            setTimeout(() => {
+                const g3 = games.get(this.gameId);
+                if (g3 && !g3.result) handleMove(this.gameId, g3, this, uci);
+            }, postPause);
+        } else {
+            handleMove(this.gameId, game, this, uci);
+        }
+    }
+
+    close() {
+        if (this.moveTimer) clearTimeout(this.moveTimer);
+    }
+}
+
+function generateBotProfile() {
+    const adj = BOT_ADJECTIVES[Math.floor(Math.random() * BOT_ADJECTIVES.length)];
+    const noun = BOT_CHESS_WORDS[Math.floor(Math.random() * BOT_CHESS_WORDS.length)];
+    const num = Math.floor(Math.random() * 90) + 10;
+    const username = `${adj}${noun}${num}`;
+    const theme = BOT_THEMES[Math.floor(Math.random() * BOT_THEMES.length)];
+    const pieceSet = BOT_PIECE_SETS[Math.floor(Math.random() * BOT_PIECE_SETS.length)];
+    return { username, theme, pieceSet, avatar: null };
+}
 
 function createNewGame(tcId = DEFAULT_TIME_CONTROL) {
     const tc = TIME_CONTROLS[tcId] ?? TIME_CONTROLS[DEFAULT_TIME_CONTROL];
@@ -54,6 +169,7 @@ function createNewGame(tcId = DEFAULT_TIME_CONTROL) {
         moveAbortWarnTimer: null,
         movesPlayed: 0,
         disconnectTimer: null,
+        botPairTimer: null,
     };
 }
 
@@ -185,6 +301,109 @@ function sanitizeSettings(settings) {
     };
 }
 
+function handleMove(gameId, game, playerRef, uci) {
+    const sideToMove = game.engine.side_to_move();
+    const isWhite = game.white === playerRef;
+    const isBlack = game.black === playerRef;
+
+    if ((sideToMove === "w" && !isWhite) || (sideToMove === "b" && !isBlack)) {
+        playerRef.send(JSON.stringify({ type: "error", msg: "not your turn" }));
+        return;
+    }
+
+    const mv = game.engine.parse_uci(uci);
+    if (!mv) {
+        playerRef.send(JSON.stringify({ type: "error", msg: "invalid move" }));
+        return;
+    }
+
+    try {
+        if (game.clockActive === sideToMove && game.lastTickAt) {
+            const elapsed = Date.now() - game.lastTickAt;
+            game.clocks[sideToMove] = Math.max(0, game.clocks[sideToMove] - elapsed);
+
+            if (game.clocks[sideToMove] <= 0) {
+                clearFlagTimer(game);
+                game.clocks[sideToMove] = 0;
+                game.clockActive = null;
+                game.result = sideToMove === "w" ? "timeout_white" : "timeout_black";
+
+                const msg = JSON.stringify({ type: "game_over", result: game.result, ...clockState(game) });
+                game.white?.send(msg);
+                game.black?.send(msg);
+                return;
+            }
+
+            game.clocks[sideToMove] += game.timeControl.increment;
+        }
+
+        game.engine.make_move(mv);
+        game.movesPlayed++;
+        const result = game.engine.game_result();
+
+        console.log(`[${gameId}] move ${uci} - result: ${result}`);
+
+        if (result !== "ongoing") {
+            clearFlagTimer(game);
+            game.result = result;
+            game.clockActive = null;
+        } else {
+            game.clockActive = sideToMove === "w" ? "b" : "w";
+            game.lastTickAt = Date.now();
+            scheduleFlagTimer(gameId, game);
+
+            if (game.movesPlayed < 2) {
+                resetMoveAbortTimer(gameId, game);
+            } else {
+                if (game.moveAbortTimer) { clearTimeout(game.moveAbortTimer); game.moveAbortTimer = null; }
+                if (game.moveAbortWarnTimer) { clearTimeout(game.moveAbortWarnTimer); game.moveAbortWarnTimer = null; }
+            }
+        }
+
+        const msg = JSON.stringify({
+            type: "move",
+            fen: game.engine.get_fen(),
+            uci,
+            isCapture: mv.is_capture(),
+            isCastle: mv.is_castle(),
+            isPromotion: mv.is_promotion(),
+            isCheck: game.engine.is_in_check(),
+            result,
+            ...clockState(game),
+        });
+
+        game.white?.send(msg);
+        game.black?.send(msg);
+    } catch (e) {
+        console.warn(`[${gameId}] illegal move: ${uci}`);
+        playerRef.send(JSON.stringify({ type: "error", msg: "illegal move" }));
+    }
+}
+
+function pairWithBot(gameId, tcId) {
+    const game = games.get(gameId);
+    if (!game || game.result || (game.white && game.black)) return;
+
+    cleanupWaitingEntry(tcId, gameId);
+
+    const profile = generateBotProfile();
+
+    const botIsWhite = Math.random() < 0.5;
+    const botColor = botIsWhite ? "w" : "b";
+    const botSettings = sanitizeSettings(profile);
+    const bot = new BotPlayer(gameId, botColor, tcId, profile);
+
+    if (botIsWhite) {
+        game.white = bot;
+        game.whiteSettings = botSettings;
+    } else {
+        game.black = bot;
+        game.blackSettings = botSettings;
+    }
+
+    console.log(`[${gameId}] paired with bot as ${botColor}`);
+}
+
 app.get("/match", (c) => {
     const tcId = c.req.query("tc") ?? DEFAULT_TIME_CONTROL;
     if (!TIME_CONTROLS[tcId]) return c.json({ error: "invalid time control" }, 400);
@@ -211,12 +430,17 @@ app.get("/match", (c) => {
     }
 
     const gameId = crypto.randomUUID();
-    games.set(gameId, createNewGame(tcId));
-    waitingPlayers.set(tcId, {
-        gameId,
-        reserved: false,
-        reservedAt: null,
-    });
+    const game = createNewGame(tcId);
+    games.set(gameId, game);
+    waitingPlayers.set(tcId, { gameId, reserved: false, reservedAt: null });
+
+    game.botPairTimer = setTimeout(() => {
+        const g = games.get(gameId);
+        if (!g || g.result || (g.white && g.black)) return;
+        const entry = waitingPlayers.get(tcId);
+        if (entry?.gameId === gameId && entry.reserved) return;
+        pairWithBot(gameId, tcId);
+    }, BOT_WAIT_TIMEOUT_MS);
 
     console.log(`[match] waiting for opponent, game ${gameId} (${tcId})`);
     return c.json({ waiting: true, gameId });
@@ -326,42 +550,74 @@ app.get("/ws/:gameId", upgradeWebSocket((c) => {
                     game.tokens[token] = "w";
                     game.whiteSettings = sanitizeSettings(settings);
 
-                    console.log(`[${gameId}] player joined as white`);
+                    if (game.botPairTimer) {
+                        clearTimeout(game.botPairTimer);
+                        game.botPairTimer = null;
+                    }
+
                     ws.send(JSON.stringify({ type: "assign", color: "w" }));
+
+                    if (game.black?.isBot) {
+                        cleanupWaitingEntry(game.tcId, gameId);
+                        ws.send(JSON.stringify({ type: "opponent_info", ...(game.blackSettings ?? {}) }));
+                        startClocks(gameId, game);
+                        resetMoveAbortTimer(gameId, game);
+                    }
                 } else if (!game.black) {
-                    if (Math.random() < 0.5) {
-                        game.tokens[token] = "w";
+                    if (game.botPairTimer) {
+                        clearTimeout(game.botPairTimer);
+                        game.botPairTimer = null;
+                    }
 
-                        const oldToken = Object.keys(game.tokens).find(
-                            (t) => game.tokens[t] === "w" && t !== token
-                        );
-
-                        if (oldToken) game.tokens[oldToken] = "b";
-
-                        game.black = game.white;
-                        game.white = ws;
-                        game.blackSettings = game.whiteSettings;
-                        game.whiteSettings = sanitizeSettings(settings);
-
-                        console.log(`[${gameId}] player joined as white (colors swapped)`);
-                        game.black?.send(JSON.stringify({ type: "assign", color: "b" }));
-                        ws.send(JSON.stringify({ type: "assign", color: "w" }));
-                    } else {
+                    if (game.white?.isBot) {
                         game.black = ws;
                         game.tokens[token] = "b";
                         game.blackSettings = sanitizeSettings(settings);
 
-                        console.log(`[${gameId}] player joined as black`);
+                        console.log(`[${gameId}] player joined as black (vs bot)`);
                         ws.send(JSON.stringify({ type: "assign", color: "b" }));
+                        cleanupWaitingEntry(game.tcId, gameId);
+
+                        game.white.send(JSON.stringify({ type: "opponent_info", ...(game.blackSettings ?? {}) }));
+                        ws.send(JSON.stringify({ type: "opponent_info", ...(game.whiteSettings ?? {}) }));
+
+                        startClocks(gameId, game);
+                        resetMoveAbortTimer(gameId, game);
+                    } else {
+                        if (Math.random() < 0.5) {
+                            game.tokens[token] = "w";
+
+                            const oldToken = Object.keys(game.tokens).find(
+                                (t) => game.tokens[t] === "w" && t !== token
+                            );
+
+                            if (oldToken) game.tokens[oldToken] = "b";
+
+                            game.black = game.white;
+                            game.white = ws;
+                            game.blackSettings = game.whiteSettings;
+                            game.whiteSettings = sanitizeSettings(settings);
+
+                            console.log(`[${gameId}] player joined as white (colors swapped)`);
+                            game.black?.send(JSON.stringify({ type: "assign", color: "b" }));
+                            ws.send(JSON.stringify({ type: "assign", color: "w" }));
+                        } else {
+                            game.black = ws;
+                            game.tokens[token] = "b";
+                            game.blackSettings = sanitizeSettings(settings);
+
+                            console.log(`[${gameId}] player joined as black`);
+                            ws.send(JSON.stringify({ type: "assign", color: "b" }));
+                        }
+
+                        cleanupWaitingEntry(game.tcId, gameId);
+
+                        game.white?.send(JSON.stringify({ type: "opponent_info", ...(game.blackSettings ?? {}) }));
+                        game.black?.send(JSON.stringify({ type: "opponent_info", ...(game.whiteSettings ?? {}) }));
+
+                        startClocks(gameId, game);
+                        resetMoveAbortTimer(gameId, game);
                     }
-
-                    cleanupWaitingEntry(game.tcId, gameId);
-
-                    game.white?.send(JSON.stringify({ type: "opponent_info", ...(game.blackSettings ?? {}) }));
-                    game.black?.send(JSON.stringify({ type: "opponent_info", ...(game.whiteSettings ?? {}) }));
-
-                    startClocks(gameId, game);
-                    resetMoveAbortTimer(gameId, game);
                 } else {
                     console.warn(`[${gameId}] player tried to join full game`);
                     ws.send(JSON.stringify({ type: "error", msg: "game full" }));
@@ -431,9 +687,11 @@ app.get("/ws/:gameId", upgradeWebSocket((c) => {
 
             if (type === "draw_offer") {
                 const opponent = game.white === ws ? game.black : game.white;
-                if (!opponent) return;
-
-                opponent.send(JSON.stringify({ type: "draw_offer" }));
+                if (opponent?.isBot) {
+                    ws.send(JSON.stringify({ type: "draw_declined" }));
+                    return;
+                }
+                opponent?.send(JSON.stringify({ type: "draw_offer" }));
                 return;
             }
 
@@ -523,88 +781,7 @@ app.get("/ws/:gameId", upgradeWebSocket((c) => {
             }
 
             if (type !== "move") return;
-
-            const sideToMove = game.engine.side_to_move();
-            const isWhite = game.white === ws;
-            const isBlack = game.black === ws;
-
-            if ((sideToMove === "w" && !isWhite) || (sideToMove === "b" && !isBlack)) {
-                ws.send(JSON.stringify({ type: "error", msg: "not your turn" }));
-                return;
-            }
-
-            const mv = game.engine.parse_uci(uci);
-            if (!mv) {
-                ws.send(JSON.stringify({ type: "error", msg: "invalid move" }));
-                return;
-            }
-
-            try {
-                if (game.clockActive === sideToMove && game.lastTickAt) {
-                    const elapsed = Date.now() - game.lastTickAt;
-                    game.clocks[sideToMove] = Math.max(0, game.clocks[sideToMove] - elapsed);
-
-                    if (game.clocks[sideToMove] <= 0) {
-                        clearFlagTimer(game);
-                        game.clocks[sideToMove] = 0;
-                        game.clockActive = null;
-                        game.result = sideToMove === "w" ? "timeout_white" : "timeout_black";
-
-                        const msg = JSON.stringify({
-                            type: "game_over",
-                            result: game.result,
-                            ...clockState(game),
-                        });
-
-                        game.white?.send(msg);
-                        game.black?.send(msg);
-                        return;
-                    }
-
-                    game.clocks[sideToMove] += game.timeControl.increment;
-                }
-
-                game.engine.make_move(mv);
-                game.movesPlayed++;
-                const result = game.engine.game_result();
-
-                console.log(`[${gameId}] move ${uci} - result: ${result}`);
-
-                if (result !== "ongoing") {
-                    clearFlagTimer(game);
-                    game.result = result;
-                    game.clockActive = null;
-                } else {
-                    game.clockActive = sideToMove === "w" ? "b" : "w";
-                    game.lastTickAt = Date.now();
-                    scheduleFlagTimer(gameId, game);
-
-                    if (game.movesPlayed < 2) {
-                        resetMoveAbortTimer(gameId, game);
-                    } else {
-                        if (game.moveAbortTimer) { clearTimeout(game.moveAbortTimer); game.moveAbortTimer = null; }
-                        if (game.moveAbortWarnTimer) { clearTimeout(game.moveAbortWarnTimer); game.moveAbortWarnTimer = null; }
-                    }
-                }
-
-                const msg = JSON.stringify({
-                    type: "move",
-                    fen: game.engine.get_fen(),
-                    uci,
-                    isCapture: mv.is_capture(),
-                    isCastle: mv.is_castle(),
-                    isPromotion: mv.is_promotion(),
-                    isCheck: game.engine.is_in_check(),
-                    result,
-                    ...clockState(game),
-                });
-
-                game.white?.send(msg);
-                game.black?.send(msg);
-            } catch (e) {
-                console.warn(`[${gameId}] illegal move attempt: ${uci}`);
-                ws.send(JSON.stringify({ type: "error", msg: "illegal move" }));
-            }
+            handleMove(gameId, game, ws, uci);
         },
 
         onClose(_, ws) {

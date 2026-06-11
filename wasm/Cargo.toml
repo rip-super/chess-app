@@ -8,4 +8,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 engine = { path = "../engine" }
+bot = { path = "../bot" }
 wasm-bindgen = "0.2.114"
