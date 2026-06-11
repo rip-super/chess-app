@@ -72,6 +72,7 @@ class BotPlayer {
         this.bot.set_move_time(BOT_SEARCH_MS[tcId] ?? 1000);
         this.pendingSearchMs = null;
         this.moveTimer = null;
+        this.moveRequestSentAt = null;
     }
 
     send(data) {
@@ -123,29 +124,13 @@ class BotPlayer {
         if (!game || game.result) return;
         if (game.engine.side_to_move() !== this.color) return;
 
-        const t0 = Date.now();
-        const uci = this.bot.best_move(game.engine.get_fen());
-        if (!uci) return;
-
-        if (!this.humanLike) {
-            handleMove(this.gameId, game, this, uci);
-            return;
-        }
-
-        const elapsed = Date.now() - t0;
-
-        const wasInstant = elapsed < Math.min(200, this.pendingSearchMs * 0.25);
-        const postPause = wasInstant ? 200 + Math.random() * 600 : 0;
-
-        if (postPause > 0) {
-            const g2 = games.get(this.gameId);
-            setTimeout(() => {
-                const g3 = games.get(this.gameId);
-                if (g3 && !g3.result) handleMove(this.gameId, g3, this, uci);
-            }, postPause);
-        } else {
-            handleMove(this.gameId, game, this, uci);
-        }
+        const human = this.color === "w" ? game.black : game.white;
+        this.moveRequestSentAt = Date.now();
+        human?.send(JSON.stringify({
+            type: "bot_move_request",
+            fen: game.engine.get_fen(),
+            searchMs: this.pendingSearchMs ?? BOT_SEARCH_MS[this.tcId] ?? 1000,
+        }));
     }
 
     close() {
@@ -802,6 +787,33 @@ app.get("/ws/:gameId", upgradeWebSocket((c) => {
                 cleanupWaitingEntry(game.tcId, gameId);
 
                 ws.send(JSON.stringify({ type: "game_over", result, ...clockState(game) }));
+                return;
+            }
+
+            if (type === "bot_move") {
+                const botColor = game.white?.isBot ? "w" : game.black?.isBot ? "b" : null;
+                if (!botColor || game.engine.side_to_move() !== botColor) return;
+                const botPlayer = botColor === "w" ? game.white : game.black;
+
+                if (!botPlayer.humanLike) {
+                    handleMove(gameId, game, botPlayer, uci);
+                    return;
+                }
+
+                const elapsed = botPlayer.moveRequestSentAt ? Date.now() - botPlayer.moveRequestSentAt : 999;
+                const wasInstant = elapsed < Math.min(200, (botPlayer.pendingSearchMs ?? 1000) * 0.25);
+                const postPause = wasInstant ? 200 + Math.random() * 600 : 0;
+
+                botPlayer.moveRequestSentAt = null;
+
+                if (postPause > 0) {
+                    setTimeout(() => {
+                        const g = games.get(gameId);
+                        if (g && !g.result) handleMove(gameId, g, botPlayer, uci);
+                    }, postPause);
+                } else {
+                    handleMove(gameId, game, botPlayer, uci);
+                }
                 return;
             }
 

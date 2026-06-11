@@ -116,6 +116,12 @@ const chatLog = document.getElementById("chat-log");
 const chatInput = document.getElementById("chat-input");
 const chatSend = document.getElementById("chat-send");
 
+const botWorker = new Worker("bot-worker.js", { type: "module" });
+
+botWorker.onmessage = ({ data }) => {
+    ws.send(JSON.stringify({ type: "bot_move", uci: data.uci }));
+};
+
 function pieceColor(piece) {
     return piece ? piece[0] : null;
 }
@@ -1030,6 +1036,11 @@ function connect() {
                     ws.send(JSON.stringify({ type: "claim_victory" }));
                 });
             }
+            return;
+        }
+
+        if (msg.type === "bot_move_request") {
+            botWorker.postMessage({ fen: msg.fen, searchMs: msg.searchMs ?? 1000 });
             return;
         }
 
