@@ -1,16 +1,11 @@
 # chess
-
-A fully featured online chess app with a custom Rust engine compiled to WebAssembly.
-
-Currently live at https://chess.sahildash.dev
+A fully featured online chess app with a custom Rust engine compiled to WebAssembly. Currently live at https://chess.sahildash.dev
 
 ---
 
 ## The Engine
 
-The chess engine is written from scratch in Rust and compiled to WASM via wasm-bindgen, so it runs directly in the browser with no server round-trips for move validation.
-
-Under the hood:
+The chess engine is written from scratch in Rust and compiled to WASM via wasm-bindgen, so it runs directly in the browser with no server round-trips for move validation. Under the hood:
 
 * **Bitboard representation** - each piece type and color gets its own 64-bit integer, with a mailbox for fast square lookups
 * **Magic bitboards** for sliding pieces (bishops, rooks, queens) - precomputed attack tables indexed by a magic number hash of the occupancy mask, giving O(1) attack generation
@@ -18,9 +13,13 @@ Under the hood:
 * **Draw detection** - threefold repetition, fifty-move rule, and insufficient material
 * **Verified with perft** - node counts match known results up to depth 6 across standard test positions
 
-### Search
+---
 
-The engine now includes a full competitive search stack:
+## The Bot
+
+the bot (`bot/`) is a separate wrapper that uses the engine to actually search for moves. it has a full competitive search stack:
+
+### Search
 
 * Negamax
 * Alpha-beta pruning
@@ -53,17 +52,15 @@ The engine now includes a full competitive search stack:
 ## Features
 
 **Gameplay**
-
 * Real-time multiplayer
 * Play against other users in the browser
-* Play against the built-in engine
+* Play against the built-in bot
 
 If no opponent is found within ~15 seconds, you are automatically matched with the bot.
 
 **Engine Integration**
-
-* The same engine powers both validation (WASM) and the bot
-* Runs entirely client-side
+* The core engine handles move generation and validation, compiled to WASM so it runs entirely client-side
+* The bot (`bot/`) is a separate wrapper that uses the engine to search for moves
 
 **Tournament / Testing**
 
@@ -92,9 +89,7 @@ There is a built-in gauntlet system to test different versions of the engine aga
 
 ## Running Locally
 
-make sure you have rust + cargo installed.
-
-add the wasm target and wasm tooling:
+make sure you have rust + cargo installed. add the wasm target and wasm tooling:
 
 ```
 rustup target add wasm32-unknown-unknown
@@ -116,14 +111,52 @@ npm install
 node server.js
 ```
 
-open the localhost:3000 in your browser.
+open localhost:3000 in your browser.
+
+### Running a bot match
+
+if you want to run a match between two bots, here's how to set it up:
+
+1. download [stockfish](https://stockfishchess.org/download/) and put the binary in a folder called `stockfish` inside the `scripts` directory
+2. grab a PGN file from the [Lichess database](https://database.lichess.org/) to use as a source of positions
+3. install the python dependencies:
+
+```
+cd scripts
+pip install -r requirements.txt
+```
+
+4. generate positions from the PGN:
+
+```
+python gen_positions.py games.pgn positions.txt
+```
+
+5. compile the bots from the `gauntlet` directory:
+
+```
+cargo build --release -p gauntlet
+```
+
+6. run the tournament:
+
+```
+python scripts/run_tournament.py \
+  ./target/release/bot1 \
+  ./target/release/bot2 \
+  scripts/positions.txt \
+  --name-a bot1 --name-b bot2 \
+  --move-time 100 \
+  --pgn results.pgn \
+  --workers 4
+```
+
+the results PGN can be loaded into any chess GUI (like [Lichess analysis](https://lichess.org/analysis) or Arena) to review the games.
 
 ---
 
 ## Notes
 
-* The engine was built incrementally (see `gauntlet/src/bin/` for progression from random -> full search engine)
+* The bot was built incrementally (see `gauntlet/src/bin/` for progression from random mover -> full search bot)
 * Designed to be fast enough for real-time play in the browser
 * No external chess libraries are used for the engine itself (everything is built from scratch!)
-
----
