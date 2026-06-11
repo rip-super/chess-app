@@ -465,16 +465,16 @@ impl Bitboards {
 
 // region: Rng
 
-struct Rng {
+pub struct Rng {
     state: u32,
 }
 
 impl Rng {
-    fn new(seed: u32) -> Rng {
+    pub fn new(seed: u32) -> Rng {
         Rng { state: seed }
     }
 
-    fn next_u32(&mut self) -> u32 {
+    pub fn next_u32(&mut self) -> u32 {
         self.state ^= self.state << 13;
         self.state ^= self.state >> 17;
         self.state ^= self.state << 5;
@@ -482,7 +482,7 @@ impl Rng {
         self.state
     }
 
-    fn next_u64(&mut self) -> u64 {
+    pub fn next_u64(&mut self) -> u64 {
         let n1 = (self.next_u32() as u64) & 0xFFFF;
         let n2 = (self.next_u32() as u64) & 0xFFFF;
         let n3 = (self.next_u32() as u64) & 0xFFFF;
