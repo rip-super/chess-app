@@ -350,7 +350,13 @@ async function playGameIntro() {
     overlay.classList.add("is-leaving");
 
     await new Promise(resolve => {
-        overlay.addEventListener("animationend", resolve, { once: true });
+        await new Promise(resolve => {
+            const fallback = setTimeout(resolve, 2500);
+            overlay.addEventListener("animationend", () => {
+                clearTimeout(fallback);
+                resolve();
+            }, { once: true });
+        });
     });
 
     overlay.remove();

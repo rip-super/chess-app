@@ -560,10 +560,11 @@ app.get("/ws/:gameId", upgradeWebSocket((c) => {
                     }
 
                     ws.send(JSON.stringify({ type: "assign", color: restoredColor }));
-                    ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen(), ...clockState(game) }));
 
                     const oppSettings = restoredColor === "w" ? game.blackSettings : game.whiteSettings;
                     if (oppSettings) ws.send(JSON.stringify({ type: "opponent_info", ...oppSettings }));
+
+                    ws.send(JSON.stringify({ type: "sync", fen: game.engine.get_fen(), ...clockState(game) }));
 
                     if (game.result) ws.send(JSON.stringify({ type: "game_over", result: game.result }));
                     return;
