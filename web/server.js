@@ -61,14 +61,16 @@ const games = new Map();
 const waitingPlayers = new Map();
 
 class BotPlayer {
-    constructor(gameId, color, tcId, profile) {
+    constructor(gameId, color, tcId, profile, humanLike = true) {
         this.gameId = gameId;
         this.color = color;
         this.profile = profile;
         this.isBot = true;
         this.tcId = tcId;
+        this.humanLike = humanLike;
         this.bot = new ChessBot();
         this.bot.set_move_time(BOT_SEARCH_MS[tcId] ?? 1000);
+        this.pendingSearchMs = null;
         this.moveTimer = null;
     }
 
@@ -90,6 +92,14 @@ class BotPlayer {
         if (this.moveTimer) clearTimeout(this.moveTimer);
 
         const introBuffer = game.movesPlayed === 0 ? 3500 : 0;
+
+        if (!this.humanLike) {
+            this.pendingSearchMs = BOT_SEARCH_MS[this.tcId] ?? 1000;
+            this.bot.set_move_time(this.pendingSearchMs);
+            this.moveTimer = setTimeout(() => this.makeMove(), introBuffer);
+            return;
+        }
+
         const isOpening = game.movesPlayed < 12;
 
         const pause = isOpening
@@ -116,6 +126,11 @@ class BotPlayer {
         const t0 = Date.now();
         const uci = this.bot.best_move(game.engine.get_fen());
         if (!uci) return;
+
+        if (!this.humanLike) {
+            handleMove(this.gameId, game, this, uci);
+            return;
+        }
 
         const elapsed = Date.now() - t0;
 
@@ -479,6 +494,30 @@ app.delete("/match/:gameId", (c) => {
     }
 
     return c.json({ ok: true });
+});
+
+app.get("/bot-match", (c) => {
+    const tcId = c.req.query("tc") ?? DEFAULT_TIME_CONTROL;
+    if (!TIME_CONTROLS[tcId]) return c.json({ error: "invalid time control" }, 400);
+
+    const gameId = crypto.randomUUID();
+    const game = createNewGame(tcId);
+    games.set(gameId, game);
+
+    const profile = { username: "Chess Bot", theme: "classic", pieceSet: "standard", avatar: null };
+    const botColor = Math.random() < 0.5 ? "w" : "b";
+    const bot = new BotPlayer(gameId, botColor, tcId, profile, false);
+
+    if (botColor === "w") {
+        game.white = bot;
+        game.whiteSettings = sanitizeSettings(profile);
+    } else {
+        game.black = bot;
+        game.blackSettings = sanitizeSettings(profile);
+    }
+
+    console.log(`[${gameId}] bot-vs-player game created (bot is ${botColor})`);
+    return c.json({ gameId });
 });
 
 app.get("/ws/:gameId", upgradeWebSocket((c) => {

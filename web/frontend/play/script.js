@@ -82,11 +82,26 @@ let opponentPieceSet = "standard";
 let opponentUsername = "Opponent";
 let myAvatar = null;
 let opponentAvatar = null;
+let lastOpponentMoveAt = 0;
+const MIN_BOT_MOVE_INTERVAL = 350;
 
 const board = document.getElementById("board");
 board.style.touchAction = "none";
 
-const sfx = name => Object.assign(new Audio(`assets/sounds/${name}.mp3`), { currentTime: 0 }).play();
+const _sounds = {};
+["move", "capture", "castle", "check", "promote", "game_start", "game_end", "time_low", "premove"]
+    .forEach(name => {
+        const a = new Audio(`assets/sounds/${name}.mp3`);
+        a.preload = "auto";
+        _sounds[name] = a;
+    });
+
+const sfx = name => {
+    const a = _sounds[name];
+    if (!a) return Promise.resolve();
+    a.currentTime = 0;
+    return a.play();
+};
 
 const moveLog = document.getElementById("move-log");
 const drawBtn = document.getElementById("draw-btn");
@@ -857,6 +872,11 @@ function connect() {
             applyClockState(msg);
 
             if (!isOwnMove) {
+                const now = Date.now();
+                const delay = Math.max(0, MIN_BOT_MOVE_INTERVAL - (now - lastOpponentMoveAt));
+                if (delay > 0) await new Promise(r => setTimeout(r, delay));
+                lastOpponentMoveAt = Date.now();
+
                 const mv = engine.parse_uci(msg.uci);
                 let san = mv ? uciToSan(msg.uci) : msg.uci;
 

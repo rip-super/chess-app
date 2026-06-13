@@ -125,6 +125,23 @@ img {
     background: var(--btn-secondary-bg-hover);
 }
 
+.btn-bot {
+    background: rgba(123, 158, 178, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--text);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15), 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.btn-bot:hover {
+    background: rgba(123, 158, 178, 0.25);
+    border-color: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.2), 0 6px 25px rgba(0, 0, 0, 0.15);
+}
+
 .btn:active {
     transform: translateY(0);
 }

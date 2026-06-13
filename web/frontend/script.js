@@ -22,6 +22,10 @@ const avatarFileInput = document.getElementById("avatar-file-input");
 const avatarPreviewImg = document.getElementById("avatar-preview");
 const avatarPlaceholder = document.getElementById("avatar-placeholder");
 const avatarRemoveBtn = document.getElementById("avatar-remove-btn");
+const botBtn = document.getElementById("bot-btn");
+const tcHeader = document.getElementById("tc-header");
+
+let playMode = "human";
 
 const previewSquares = [];
 let isMatchmaking = false;
@@ -469,11 +473,16 @@ function cancelMatchmaking() {
 }
 
 playBtn.addEventListener("click", () => {
-    if (isMatchmaking) {
-        cancelMatchmaking();
-        return;
-    }
+    if (isMatchmaking) { cancelMatchmaking(); return; }
 
+    playMode = "human";
+    tcHeader.textContent = "Choose time control";
+    tcOverlay.classList.remove("hidden");
+});
+
+botBtn.addEventListener("click", () => {
+    playMode = "bot";
+    tcHeader.textContent = "Play vs Computer";
     tcOverlay.classList.remove("hidden");
 });
 
@@ -490,9 +499,27 @@ tcOverlay.addEventListener("mousedown", e => {
 });
 
 document.querySelectorAll(".tc-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
         tcOverlay.classList.add("hidden");
-        startMatchmaking(btn.dataset.tc);
+        sessionStorage.setItem("lastPlayMode", playMode);
+
+        if (playMode === "bot") {
+            const tc = btn.dataset.tc;
+            try {
+                const res = await fetch(`/bot-match?tc=${encodeURIComponent(tc)}`);
+                const data = await res.json();
+                if (data.gameId) {
+                    localStorage.setItem("gameId", data.gameId);
+                    window.location.href = `/play/${data.gameId}`;
+                } else {
+                    statusText.textContent = "Something went wrong - try again.";
+                }
+            } catch {
+                statusText.textContent = "Connection error - try again.";
+            }
+        } else {
+            startMatchmaking(btn.dataset.tc);
+        }
     });
 });
 
@@ -592,6 +619,9 @@ avatarRemoveBtn.addEventListener("click", e => {
 
 if (sessionStorage.getItem("autoplay")) {
     sessionStorage.removeItem("autoplay");
+    const lastMode = sessionStorage.getItem("lastPlayMode") ?? "human";
+    playMode = lastMode;
+    tcHeader.textContent = lastMode === "bot" ? "Play vs Computer" : "Choose time control";
     tcOverlay.classList.remove("hidden");
 }
 
