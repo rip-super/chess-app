@@ -293,7 +293,7 @@ impl Color {
 }
 
 #[repr(usize)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Piece {
     Pawn,
     Knight,
@@ -335,7 +335,7 @@ impl Iterator for BitIter {
 
 // region: Moves
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum MoveFlag {
     Quiet,
     Capture,
@@ -347,7 +347,7 @@ pub enum MoveFlag {
     PromotionCapture,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Move {
     pub from: u8,
     pub to: u8,
@@ -355,7 +355,7 @@ pub struct Move {
     pub flag: MoveFlag,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Undo {
     moved_piece: Piece,
     captured: Option<Piece>,
@@ -376,7 +376,7 @@ pub struct NullUndo {
 
 // region: Bitboards
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Bitboards {
     // [color][piece]
     pub pieces: [[u64; 6]; 2],
@@ -500,7 +500,7 @@ impl Rng {
 
 // region: Zobrist Hash
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ZobristKeys {
     pieces: [[[u64; 64]; 6]; 2], // [color][piece][square]
     castling: [u64; 4],
@@ -547,7 +547,7 @@ impl ZobristKeys {
 
 // region: Position
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Position {
     pub bitboards: Bitboards,
     pub side_to_move: Color,
@@ -1491,6 +1491,7 @@ pub enum GameResult {
     DrawInsufficientMaterial,
 }
 
+#[derive(Debug, Clone)]
 pub struct GameState {
     pub position: Position,
     history: Vec<(Move, Undo)>,

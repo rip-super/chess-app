@@ -1,5 +1,7 @@
 use engine::*;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -548,6 +550,7 @@ pub struct Bot {
     static_evals: [i32; MAX_DEPTH],
     lmr_table: Box<[[u32; 64]; 64]>,
     book: Option<OpeningBook>,
+    stop: Arc<AtomicBool>,
 }
 
 impl Bot {
@@ -563,6 +566,7 @@ impl Bot {
             static_evals: [-CHECKMATE_SCORE; MAX_DEPTH],
             lmr_table: build_lmr_table(),
             book: Some(OpeningBook::new(include_str!("book.txt"))),
+            stop: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -577,6 +581,7 @@ impl Bot {
             static_evals: [-CHECKMATE_SCORE; MAX_DEPTH],
             lmr_table: build_lmr_table(),
             book: Some(OpeningBook::new(include_str!("book.txt"))),
+            stop: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -591,6 +596,7 @@ impl Bot {
             static_evals: [-CHECKMATE_SCORE; MAX_DEPTH],
             lmr_table: build_lmr_table(),
             book: Some(OpeningBook::new(include_str!("book.txt"))),
+            stop: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -640,7 +646,7 @@ impl Bot {
         beta: i32,
         deadline: Instant,
     ) -> i32 {
-        if Instant::now() >= deadline {
+        if Instant::now() >= deadline || self.stop.load(Ordering::Relaxed) {
             return TIMEOUT;
         }
 
@@ -716,7 +722,7 @@ impl Bot {
         is_pv: bool,
         deadline: Instant,
     ) -> i32 {
-        if Instant::now() >= deadline {
+        if Instant::now() >= deadline || self.stop.load(Ordering::Relaxed) {
             return TIMEOUT;
         }
 
@@ -971,8 +977,8 @@ impl Bot {
         let mut best_move = moves.first().copied();
         let mut prev_score = 0i32;
 
-        'ids: for depth in 1..=self.depth {
-            if Instant::now() >= deadline {
+        for depth in 1..=self.depth {
+            if Instant::now() >= deadline || self.stop.load(Ordering::Relaxed) {
                 break;
             }
 
@@ -994,10 +1000,18 @@ impl Bot {
             let mut delta = INIT_DELTA;
 
             let (completed_move, completed_score) = 'asp: loop {
+                if Instant::now() >= deadline || self.stop.load(Ordering::Relaxed) {
+                    return best_move;
+                }
+
                 let mut best_this_iter = None;
                 let mut score_this_iter = alpha;
 
                 for &mv in &moves {
+                    if self.stop.load(Ordering::Relaxed) {
+                        return best_move;
+                    }
+
                     let undo = gs.position.make_move(mv);
                     let raw = self.negamax(
                         &mut gs.position,
@@ -1011,7 +1025,7 @@ impl Bot {
                     gs.position.undo_move(mv, undo);
 
                     if raw == TIMEOUT {
-                        break 'ids;
+                        return best_move;
                     }
 
                     let score = -raw;
@@ -1047,5 +1061,13 @@ impl Bot {
         }
 
         best_move
+    }
+
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    pub fn reset_stop(&self) {
+        self.stop.store(false, Ordering::Relaxed);
     }
 }
